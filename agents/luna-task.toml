@@ -1,0 +1,17 @@
+name = "luna_task"
+description = """
+Use only for deterministic, well-scoped extraction, classification,
+format conversion, and repetitive checks with an explicit success condition.
+Do not use for ambiguous decisions or broad investigation.
+"""
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+Handle exactly one bounded task.
+Do not broaden scope or delegate.
+Return only the requested result and essential evidence.
+If judgment or architectural reasoning is required, return NEEDS_ESCALATION
+with a one-sentence reason.
+"""

@@ -26,6 +26,8 @@ Codex の親エージェントがタスクを難易度別に分類し、必要�
 - `agents/*.toml`: Luna、Terra、Solの役割別エージェント
 - `scripts/Install-TaskAwareAgent.ps1`: バックアップ付き導入スクリプト
 - `scripts/Test-TaskAwareAgent.ps1`: 配置とCodex設定の検証スクリプト
+- `scripts/install-task-aware-agent.sh`: Linux向けのバックアップ付き導入スクリプト
+- `scripts/test-task-aware-agent.sh`: Linux向けの配置とCodex設定の検証スクリプト
 
 ## 導入
 
@@ -47,9 +49,30 @@ pwsh -File .\scripts\Install-TaskAwareAgent.ps1 -SetSolDefault
 pwsh -File .\scripts\Install-TaskAwareAgent.ps1 -SetSolDefault -EnableFullAccess
 ```
 
-`-EnableFullAccess` は `approval_policy = "never"` と
-`sandbox_mode = "danger-full-access"` を設定します。信頼できる環境でのみ使用して
-ください。
+LinuxではBash版を実行します。
+
+```bash
+./scripts/install-task-aware-agent.sh
+```
+
+Solを親の既定モデルにする場合:
+
+```bash
+./scripts/install-task-aware-agent.sh --set-sol-default
+```
+
+フルアクセスも明示的に有効化する場合:
+
+```bash
+./scripts/install-task-aware-agent.sh --set-sol-default --enable-full-access
+```
+
+別のCodexホームへ導入する場合は、`CODEX_HOME` 環境変数、または
+`--codex-home PATH` を指定できます。
+
+PowerShellの `-EnableFullAccess` とLinux版の `--enable-full-access` は、
+`approval_policy = "never"` と `sandbox_mode = "danger-full-access"` を設定します。
+信頼できる環境でのみ使用してください。
 
 既存ファイルは `$CODEX_HOME/task-aware-backups/<timestamp>/` へ退避されます。
 `CODEX_HOME` が未設定の場合は `~/.codex` を使用します。
@@ -58,6 +81,12 @@ pwsh -File .\scripts\Install-TaskAwareAgent.ps1 -SetSolDefault -EnableFullAccess
 
 ```powershell
 pwsh -File .\scripts\Test-TaskAwareAgent.ps1
+```
+
+Linuxでは次のコマンドで検証します。
+
+```bash
+./scripts/test-task-aware-agent.sh
 ```
 
 導入後はCodexを再起動するか、新しいタスクを開始してください。`AGENTS.md` の

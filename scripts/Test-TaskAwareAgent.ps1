@@ -44,23 +44,33 @@ Assert-FileContains -Path $configPath -Patterns @(
 Assert-FileContains -Path $agentsMdPath -Patterns @(
     '<!-- BEGIN CODEX TASK-AWARE AGENT -->',
     'Task-aware delegation policy',
+    'agent_type\s*=\s*"luna_task"',
+    'agent_type\s*=\s*"terra_worker"',
+    'agent_type\s*=\s*"sol_specialist"',
     '<!-- END CODEX TASK-AWARE AGENT -->'
 )
 
 $expectedAgents = [ordered]@{
-    'luna-task.toml' = 'gpt-5.6-luna'
-    'terra-worker.toml' = 'gpt-5.6-terra'
-    'sol-specialist.toml' = 'gpt-5.6-sol'
+    'luna-task.toml' = [ordered]@{ Model = 'gpt-5.6-luna'; Effort = 'low'; Sandbox = 'read-only' }
+    'terra-worker.toml' = [ordered]@{ Model = 'gpt-5.6-terra'; Effort = 'medium'; Sandbox = $null }
+    'sol-specialist.toml' = [ordered]@{ Model = 'gpt-5.6-sol'; Effort = 'high'; Sandbox = 'read-only' }
 }
 
 foreach ($entry in $expectedAgents.GetEnumerator()) {
-    $escapedModel = [regex]::Escape([string]$entry.Value)
-    Assert-FileContains -Path (Join-Path $agentsPath $entry.Key) -Patterns @(
+    $escapedModel = [regex]::Escape([string]$entry.Value.Model)
+    $escapedEffort = [regex]::Escape([string]$entry.Value.Effort)
+    $patterns = @(
         '(?m)^name\s*=\s*"[^\"]+"\s*$',
         '(?m)^description\s*=\s*"""',
         '(?m)^developer_instructions\s*=\s*"""',
-        "(?m)^model\s*=\s*`"$escapedModel`"\s*$"
+        "(?m)^model\s*=\s*`"$escapedModel`"\s*$",
+        "(?m)^model_reasoning_effort\s*=\s*`"$escapedEffort`"\s*$"
     )
+    if ($entry.Value.Sandbox) {
+        $escapedSandbox = [regex]::Escape([string]$entry.Value.Sandbox)
+        $patterns += "(?m)^sandbox_mode\s*=\s*`"$escapedSandbox`"\s*$"
+    }
+    Assert-FileContains -Path (Join-Path $agentsPath $entry.Key) -Patterns $patterns
 }
 
 if ($failures.Count -gt 0) {

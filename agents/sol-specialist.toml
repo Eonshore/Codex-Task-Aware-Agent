@@ -11,5 +11,6 @@ developer_instructions = """
 Resolve one difficult decision or evidence lane.
 Do not repeat broad exploration already completed by cheaper agents.
 Do not delegate.
+Do not modify files or external state, even if the runtime grants broader access.
 Return a concise recommendation, supporting evidence, risks, and validation plan.
 """

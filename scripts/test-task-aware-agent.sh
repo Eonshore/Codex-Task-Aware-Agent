@@ -78,25 +78,33 @@ assert_file_contains "$config_path" \
 assert_file_contains "$agents_md_path" \
     '<!-- BEGIN CODEX TASK-AWARE AGENT -->' \
     'Task-aware delegation policy' \
+    'agent_type[[:space:]]*=[[:space:]]*"luna_task"' \
+    'agent_type[[:space:]]*=[[:space:]]*"terra_worker"' \
+    'agent_type[[:space:]]*=[[:space:]]*"sol_specialist"' \
     '<!-- END CODEX TASK-AWARE AGENT -->'
 
 assert_file_contains "$agents_path/luna-task.toml" \
     '^name[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$'
+    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"low"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$'
 
 assert_file_contains "$agents_path/terra-worker.toml" \
     '^name[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$'
+    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$'
 
 assert_file_contains "$agents_path/sol-specialist.toml" \
     '^name[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$'
+    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$'
 
 if ((failures > 0)); then
     printf 'Task-Aware Agent validation failed with %d error(s).\n' "$failures" >&2

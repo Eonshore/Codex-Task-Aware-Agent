@@ -50,6 +50,12 @@ Ultra を使うのは親だけで、D3 の `sol_specialist` も Sol High に抑�
 `NEEDS_ESCALATION` は Codex ランタイムの自動判定ではなく、子が能力不足の根拠を親へ返すための応答規約です。
 親はその根拠を確認してから、必要な場合だけ上位の役割へ再委譲します。
 
+子を起動するときは、`spawn_agent` の `agent_type` に `luna_task`、`terra_worker`、`sol_specialist` のいずれかを明示します。
+`task_name` は子タスクの表示名とパスを付ける項目であり、custom agent の選択には使いません。
+`task_name = "luna_task"` だけを指定すると、子が親のモデルと推論労力を継承するため、想定したコスト制御になりません。
+D1 から D3 までの委譲では `agent_type` を必須とし、まず必ず引数付きで起動します。
+tool が `agent_type` または custom agent を明示的に拒否した場合だけ、既定の子を起動せず、親で処理して不一致を報告します。
+
 ## 前提条件
 
 - Windows では PowerShell 7 以降を使用できること。
@@ -187,16 +193,16 @@ PowerShell 版の `codex doctor` は、`-CodexHome` の値ではなく、実行�
 ランタイム確認を省く場合は `--skip-runtime`、対象を変える場合は `--codex-home <path>` を指定できます。
 Linux 版は対象の `CODEX_HOME` を明示し、`codex --strict-config doctor --summary` を実行します。
 
-どちらの検証スクリプトも、配置したファイル、主要な設定値、三つの子のモデル ID を静的に確認します。
+どちらの検証スクリプトも、配置したファイル、主要な設定値、三つの子のモデル ID、推論労力、宣言した sandbox を静的に確認します。
 `codex` コマンドが見つかる場合は、続けて `codex doctor` を実行します。
 
-この検証は、子の推論労力と sandbox、モデルの利用権限、実際の子の起動、D0 から D4 までの分類結果までは確認しません。
+この検証は、runtime が子へ適用した実効 sandbox、モデルの利用権限、実際の子の起動、D0 から D4 までの分類結果までは確認しません。
 導入後は Codex を再起動するか、新しいタスクを開始し、次の手順で実動作も確認してください。
 
 1. 親のモデルと推論の選択欄が Sol Ultra になっていることを確認する。
 2. 「`agents/*.toml` から name と model を抽出して表にする」のような、完了条件が明確な D1 タスクを依頼する。
-3. 親が D1 と `luna_task` を報告し、子のタスクが起動することを確認する。
-4. 子の詳細を開き、役割と使用モデルが想定どおりであることを確認する。
+3. 親が D1 と `luna_task` を報告し、`spawn_agent` に `agent_type = "luna_task"` を渡していることを確認する。
+4. 子の詳細を開き、役割、使用モデル、推論労力が Luna Low になっていることを確認する。
 
 `AGENTS.md` の指示チェーンは新しい実行の開始時に構築されるため、導入前から開いているタスクでは確認できません。
 
@@ -228,6 +234,7 @@ Linux 版は対象の `CODEX_HOME` を明示し、`codex --strict-config doctor 
 - Ultra 自体も分割可能な作業へサブエージェントを使うため、独立した成果がある作業だけに委譲を絞ります。
 - モデルが利用できることと、ルーティングが適切であることは静的テストだけでは保証できません。
 - ルーティングは親の判断に依存するため、D0 から D4 までの境界は決定的ではありません。
+- Codex Desktop や CLI の実効 permission profile が親の権限を子へ強制する runtime では、role TOML の `sandbox_mode` より親の実効権限が優先される場合があります。Luna と Sol の developer instructions も書き込みを禁止しますが、これは OS sandbox と同じ強制境界ではありません。
 
 ## 参考資料
 

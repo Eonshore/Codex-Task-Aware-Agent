@@ -1,8 +1,12 @@
 # Codex Task-Aware Agent
 
-Codex の親エージェントがタスクを難易度別に分類し、必要な場合だけ役割別のカスタムエージェントへ委譲するための設定一式です。
+[![CI](https://github.com/Eonshore/Codex-Task-Aware-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Eonshore/Codex-Task-Aware-Agent/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-この構成が想定する親は、`gpt-5.6-sol` を推論労力 `ultra` で動かす **Sol Ultra** です。
+Codex の親エージェントがタスクを難易度別に分類し、必要な場合だけ役割別のカスタムエージェントへ委譲するための設定一式です。
+OpenAI の公式製品ではなく、Codex の公開仕様に基づくコミュニティプロジェクトです。
+
+この構成が想定する親は、`gpt-5.6-sol` をクライアントの Ultra モードで動かす **Sol Ultra** です。
 親は難易度判定、タスクの分割、子の選択、結果の統合を担当し、子には Luna Low、Terra Medium、Sol High を使い分けます。
 
 これにより、すべての子が親の高い推論労力を継承して消費量が膨らむことを避けつつ、メインスレッドへ途中経過が流れ込む量を抑えます。
@@ -12,10 +16,10 @@ Codex の親エージェントがタスクを難易度別に分類し、必要�
 
 ## 想定する実行構成
 
-Sol はモデル、Ultra は推論労力と委譲を含む実行設定です。
-Ultra は別のモデル名ではありません。
+Sol はモデル、Ultra はサブエージェントを使う実行モードです。
+Ultra は別のモデル名ではなく、単一エージェントの `model_reasoning_effort` とも同義ではありません。
 
-対応するアカウントとクライアントで Sol Ultra を選ぶと、親は最大の推論労力を使い、分割可能な作業をサブエージェントへ能動的に委譲します。
+対応するアカウントとクライアントで Sol Ultra を選ぶと、親は分割可能な作業をサブエージェントへ能動的に委譲します。
 このリポジトリは、その委譲に D0 から D4 までの判断基準と、用途別に固定した三つの子エージェントを追加します。
 
 | 難易度 | 対象 | 実行役 | モデルと推論労力 | sandbox |
@@ -44,8 +48,11 @@ Ultra を使うのは親だけで、D3 の `sol_specialist` も Sol High に抑�
 4. 委譲の調整コストが、親による直接処理より小さい。
 
 子は別の子を起動しません。
-`max_threads = 4` とポリシー上の上限により、親から同時に使う子は最大3つです。
+`max_concurrent_threads_per_session = 3` とポリシー上の上限により、親から同時に開く子スレッドは最大3つです。
 同じファイルや状態を更新するエージェントは1つに限定します。
+
+子からの再委譲は、agent TOML と `AGENTS.md` の指示で禁止します。
+旧 `agents.max_depth` は Codex V2 で無視されるため、実効的な強制境界としては使用しません。
 
 `NEEDS_ESCALATION` は Codex ランタイムの自動判定ではなく、子が能力不足の根拠を親へ返すための応答規約です。
 親はその根拠を確認してから、必要な場合だけ上位の役割へ再委譲します。
@@ -55,12 +62,15 @@ Ultra を使うのは親だけで、D3 の `sol_specialist` も Sol High に抑�
 `task_name = "luna_task"` だけを指定すると、子が親のモデルと推論労力を継承するため、想定したコスト制御になりません。
 D1 から D3 までの委譲では `agent_type` を必須とし、まず必ず引数付きで起動します。
 tool が `agent_type` または custom agent を明示的に拒否した場合だけ、既定の子を起動せず、親で処理して不一致を報告します。
+各 spawn は `fork_turns = "none"` を指定し、親の全会話履歴ではなく task packet だけを子へ渡します。
+task packet 自体にも再委譲禁止を明記します。
 
 ## 前提条件
 
 - Windows では PowerShell 7 以降を使用できること。
 - Linux では Bash、`awk`、`grep` を使用できること。
-- カスタムエージェントと multi-agent に対応した Codex を使用していること。
+- カスタムエージェントと subagent workflow に対応した現行 Codex を使用していること。
+- この公開候補の検証基準である Codex CLI 0.145.0 以降を使用すること。
 - 使用するアカウントで `gpt-5.6-luna`、`gpt-5.6-terra`、`gpt-5.6-sol` を利用できること。
 - Sol Ultra を使う場合は、対応するアカウントとクライアントで Ultra が有効であること。
 - コマンドをこのリポジトリのルートで実行すること。
@@ -84,7 +94,7 @@ Ultra を利用できない環境でも、Sol xhigh を親にして同じ D0 か
 
 | 対象 | 変更内容 |
 | --- | --- |
-| `config.toml` | `[features] multi_agent = true`、`[agents] max_threads = 4`、`max_depth = 1` を設定 |
+| `config.toml` | `[agents] enabled = true`、`max_concurrent_threads_per_session = 3` を設定し、旧 key を除去 |
 | `AGENTS.md` | マーカーで囲んだ task-aware delegation policy を追加または更新 |
 | `agents/luna-task.toml` | Luna Low の読み取り専用エージェントを配置 |
 | `agents/terra-worker.toml` | Terra Medium の作業エージェントを配置 |
@@ -120,8 +130,7 @@ pwsh -File .\scripts\Install-TaskAwareAgent.ps1 -SetSolDefault -EnableFullAccess
 
 別の Codex 環境へ試験導入する場合は `-CodexHome <path>`、変更予定だけを確認する場合は `-WhatIf` を指定できます。
 
-PowerShell 版は、まだ `config.toml` がない空の `CODEX_HOME` を初期化できません。
-Codex で設定を一度保存するか、有効な TOML を含む `config.toml` を作成してから導入してください。
+PowerShell 版も、`config.toml` がない空の `CODEX_HOME` を初期化できます。
 
 ### Linux
 
@@ -153,15 +162,9 @@ CRLF のまま実行すると、shebang の `bash` を解決できず起動に�
 `-SetSolDefault` と `--set-sol-default` が設定する親の既定値は、`gpt-5.6-sol` と `xhigh` です。
 どちらのオプションだけでも Sol Ultra にはなりません。
 
-想定構成どおりに使う場合は、導入後に対応クライアントのモデルと推論の選択欄で Sol と Ultra を選んでください。
-現在の Codex が `ultra` を設定値として受理する場合は、`config.toml` で次のように指定することもできます。
-
-```toml
-model = "gpt-5.6-sol"
-model_reasoning_effort = "ultra"
-```
-
-インストーラーが `xhigh` を使うのは、Ultra を設定ファイルから選べないクライアントとの互換性を残すためです。
+想定構成どおりに使う場合は、導入後に対応クライアントのモデル選択で Sol と Ultra を選んでください。
+インストーラーは Ultra モードを `model_reasoning_effort` として書き込みません。
+`-SetSolDefault` と `--set-sol-default` が `xhigh` を使うのは、CLI でも解釈が明確な単一エージェント側の既定値を設定するためです。
 
 ### フルアクセスの影響
 
@@ -169,9 +172,8 @@ model_reasoning_effort = "ultra"
 この指定は、親だけでなく sandbox を親から継承する `terra_worker` にも影響します。
 同じ `$CODEX_HOME` を使うほかのプロジェクトにも適用されるため、信頼できる環境でのみ使用してください。
 
-既存の `config.toml` に `default_permissions` がある場合は、`-EnableFullAccess` または `--enable-full-access` をそのまま使わないでください。
-Codex は `default_permissions` と `sandbox_mode` の併用を想定しておらず、インストーラーも競合を検出または解消しません。
-どちらの権限方式を使うかを決め、既存設定を整理してから導入してください。
+既存の `config.toml` に `default_permissions` がある場合、インストーラーは `-EnableFullAccess` または `--enable-full-access` をエラーで停止します。
+Codex は `default_permissions` と `sandbox_mode` の併用を想定していないため、どちらの権限方式を使うかを決め、既存設定を整理してから再実行してください。
 
 ## 検証
 
@@ -181,8 +183,9 @@ Codex は `default_permissions` と `sandbox_mode` の併用を想定してお�
 pwsh -File .\scripts\Test-TaskAwareAgent.ps1
 ```
 
-ランタイム確認を省く場合は `-SkipRuntime`、静的検査の対象を変える場合は `-CodexHome <path>` を指定できます。
-PowerShell 版の `codex doctor` は、`-CodexHome` の値ではなく、実行プロセスが使用している Codex 設定を検査します。
+ランタイム確認を省く場合は `-SkipRuntime`、対象を変える場合は `-CodexHome <path>` を指定できます。
+認証情報のない clean home や CI では `-ConfigOnlyRuntime` を加えると、strict config load だけを必須にし、認証や接続など別カテゴリの doctor failure を分離できます。
+PowerShell 版も対象の `CODEX_HOME` を明示し、`codex --strict-config doctor --summary` を実行します。
 
 ### Linux
 
@@ -191,6 +194,7 @@ PowerShell 版の `codex doctor` は、`-CodexHome` の値ではなく、実行�
 ```
 
 ランタイム確認を省く場合は `--skip-runtime`、対象を変える場合は `--codex-home <path>` を指定できます。
+認証情報のない clean home や CI では `--config-only-runtime` を加えます。
 Linux 版は対象の `CODEX_HOME` を明示し、`codex --strict-config doctor --summary` を実行します。
 
 どちらの検証スクリプトも、配置したファイル、主要な設定値、三つの子のモデル ID、推論労力、宣言した sandbox を静的に確認します。
@@ -228,6 +232,20 @@ Linux 版は対象の `CODEX_HOME` を明示し、`codex --strict-config doctor 
 - `scripts/install-task-aware-agent.sh`：Linux 向けのバックアップ付き導入スクリプト
 - `scripts/test-task-aware-agent.sh`：Linux 向けの配置と Codex 設定の検証スクリプト
 
+## リリース
+
+`v*` tag を push すると、GitHub Actions が Windows/Linux の clean-home round trip を再実行し、次の成果物を GitHub Release に作成します。
+
+- source archive の `.zip`
+- source archive の `.tar.gz`
+- 両 archive を検証する `SHA256SUMS`
+
+公開前の手順と必須確認は [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
+
+## ライセンス
+
+Apache License 2.0 です。SPDX identifier は `Apache-2.0` です。全文は [LICENSE](LICENSE) を参照してください。
+
 ## 設計上の注意
 
 - サブエージェントはメインスレッドのノイズを減らしますが、総トークン量や待ち時間が必ず減るわけではありません。
@@ -241,4 +259,6 @@ Linux 版は対象の `CODEX_HOME` を明示し、`codex --strict-config doctor 
 - [Models](https://learn.chatgpt.com/docs/models)
 - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 - [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+- [Configuration Schema](https://developers.openai.com/codex/config-schema.json)
 - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+- [Codex changelog](https://learn.chatgpt.com/docs/changelog)

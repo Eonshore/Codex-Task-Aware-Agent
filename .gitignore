@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 task-aware-backups/
+.codex/
+dist/

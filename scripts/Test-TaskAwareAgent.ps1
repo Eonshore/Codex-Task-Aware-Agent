@@ -4,7 +4,8 @@ param(
         if ($env:CODEX_HOME) { $env:CODEX_HOME }
         else { Join-Path $HOME '.codex' }
     ),
-    [switch]$SkipRuntime
+    [switch]$SkipRuntime,
+    [switch]$ConfigOnlyRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,11 +35,9 @@ $agentsMdPath = Join-Path $CodexHome 'AGENTS.md'
 $agentsPath = Join-Path $CodexHome 'agents'
 
 Assert-FileContains -Path $configPath -Patterns @(
-    '(?m)^\[features\]\s*$',
-    '(?m)^multi_agent\s*=\s*true\s*$',
-    '(?m)^\[agents\]\s*$',
-    '(?m)^max_threads\s*=\s*4\s*$',
-    '(?m)^max_depth\s*=\s*1\s*$'
+    '(?m)^[ \t]*\[agents\][ \t]*(?:#[^\r\n]*)?$',
+    '(?m)^enabled\s*=\s*true\s*$',
+    '(?m)^max_concurrent_threads_per_session\s*=\s*3\s*$'
 )
 
 Assert-FileContains -Path $agentsMdPath -Patterns @(
@@ -47,6 +46,8 @@ Assert-FileContains -Path $agentsMdPath -Patterns @(
     'agent_type\s*=\s*"luna_task"',
     'agent_type\s*=\s*"terra_worker"',
     'agent_type\s*=\s*"sol_specialist"',
+    'fork_turns\s*=\s*"none"',
+    'packet must explicitly tell the child not to delegate',
     '<!-- END CODEX TASK-AWARE AGENT -->'
 )
 
@@ -80,9 +81,39 @@ if ($failures.Count -gt 0) {
 
 $codex = Get-Command codex -ErrorAction SilentlyContinue
 if ($codex -and -not $SkipRuntime) {
-    & $codex.Source doctor --summary --no-color --ascii
-    if ($LASTEXITCODE -ne 0) {
-        throw "codex doctor failed with exit code $LASTEXITCODE"
+    $previousCodexHome = $env:CODEX_HOME
+    try {
+        $env:CODEX_HOME = [IO.Path]::GetFullPath($CodexHome)
+        if ($ConfigOnlyRuntime) {
+            $doctorOutput = (& $codex.Source --strict-config doctor --json --no-color 2>&1 | Out-String)
+            $doctorExitCode = $LASTEXITCODE
+            try {
+                $doctorReport = $doctorOutput | ConvertFrom-Json -Depth 20
+            }
+            catch {
+                throw "codex doctor did not return valid JSON for CODEX_HOME=$($env:CODEX_HOME): $($doctorOutput.Trim())"
+            }
+
+            $configCheck = $doctorReport.checks.'config.load'
+            if (-not $configCheck -or $configCheck.status -ne 'ok') {
+                throw "Codex strict config load failed for CODEX_HOME=$($env:CODEX_HOME) (doctor exit $doctorExitCode)."
+            }
+            Write-Host "Codex strict config load passed for CODEX_HOME=$($env:CODEX_HOME)."
+        }
+        else {
+            & $codex.Source --strict-config doctor --summary --no-color --ascii
+            if ($LASTEXITCODE -ne 0) {
+                throw "codex doctor failed with exit code $LASTEXITCODE for CODEX_HOME=$($env:CODEX_HOME)"
+            }
+        }
+    }
+    finally {
+        if ($null -eq $previousCodexHome) {
+            Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:CODEX_HOME = $previousCodexHome
+        }
     }
 }
 elseif (-not $codex -and -not $SkipRuntime) {

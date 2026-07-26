@@ -70,6 +70,36 @@ done
 [[ -f "$policy_source" ]] || die "missing policy file: $policy_source"
 command -v awk >/dev/null || die 'awk is required'
 
+expected_agent_files=(luna-task.toml terra-worker.toml sol-specialist.toml)
+for agent_file in "${expected_agent_files[@]}"; do
+    [[ -f "$agents_source/$agent_file" ]] || die "missing agent file: $agents_source/$agent_file"
+done
+
+validate_policy_markers() {
+    local path=$1
+
+    awk '
+        BEGIN {
+            begin_marker = "<!-- BEGIN CODEX TASK-AWARE AGENT -->"
+            end_marker = "<!-- END CODEX TASK-AWARE AGENT -->"
+        }
+
+        $0 == begin_marker {
+            begin_count++
+            if (begin_count > 1 || end_count > 0) invalid = 1
+        }
+
+        $0 == end_marker {
+            end_count++
+            if (begin_count != 1 || end_count > 1) invalid = 1
+        }
+
+        END {
+            if (invalid || begin_count != end_count || begin_count > 1) exit 1
+        }
+    ' "$path"
+}
+
 backup_if_present() {
     local source=$1
     local relative destination
@@ -105,14 +135,14 @@ set_toml_section_value() {
             }
         }
 
-        $0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*$" {
+        $0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*(#.*)?$" {
             section_found = 1
             in_section = 1
             print
             next
         }
 
-        in_section && $0 ~ "^[[:space:]]*\\[[^]]+\\][[:space:]]*$" {
+        in_section && $0 ~ "^[[:space:]]*\\[[^]]+\\][[:space:]]*(#.*)?$" {
             emit_value()
             in_section = 0
         }
@@ -158,7 +188,7 @@ set_top_level_toml_value() {
             next
         }
 
-        before_section && $0 ~ "^[[:space:]]*\\[[^]]+\\][[:space:]]*$" {
+        before_section && $0 ~ "^[[:space:]]*\\[[^]]+\\][[:space:]]*(#.*)?$" {
             if (!key_written) {
                 print key " = " value
                 print ""
@@ -175,6 +205,30 @@ set_top_level_toml_value() {
                 print key " = " value
             }
         }
+    ' "$path" > "$temporary"
+    replace_file "$temporary" "$path"
+}
+
+remove_toml_section_key() {
+    local path=$1
+    local section=$2
+    local key=$3
+    local temporary
+
+    temporary=$(mktemp "$codex_home/.task-aware-config.XXXXXX")
+    awk -v section="$section" -v key="$key" '
+        $0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*(#.*)?$" {
+            in_section = 1
+            print
+            next
+        }
+
+        in_section && $0 ~ "^[[:space:]]*\\[[^]]+\\][[:space:]]*(#.*)?$" {
+            in_section = 0
+        }
+
+        in_section && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { next }
+        { print }
     ' "$path" > "$temporary"
     replace_file "$temporary" "$path"
 }
@@ -225,19 +279,30 @@ merge_policy_block() {
     replace_file "$temporary" "$destination"
 }
 
+if [[ -f "$agents_md_path" ]] && ! validate_policy_markers "$agents_md_path"; then
+    die 'AGENTS.md contains malformed or duplicate Task-Aware Agent markers; repair the marker block before retrying'
+fi
+
+if [[ "$enable_full_access" == true && -f "$config_path" ]] &&
+    grep -Eq '^[[:space:]]*default_permissions[[:space:]]*=' "$config_path"; then
+    die 'cannot use --enable-full-access while config.toml defines default_permissions; remove one permission system before retrying'
+fi
+
 mkdir -p -- "$codex_home" "$agents_path" "$backup_path"
 
 backup_if_present "$config_path"
 backup_if_present "$agents_md_path"
-while IFS= read -r agent_file; do
-    backup_if_present "$agents_path/$(basename -- "$agent_file")"
-done < <(find "$agents_source" -maxdepth 1 -type f -name '*.toml' -print | sort)
+for agent_file in "${expected_agent_files[@]}"; do
+    backup_if_present "$agents_path/$agent_file"
+done
 
 touch -- "$config_path" "$agents_md_path"
 
-set_toml_section_value "$config_path" features multi_agent true
-set_toml_section_value "$config_path" agents max_threads 4
-set_toml_section_value "$config_path" agents max_depth 1
+set_toml_section_value "$config_path" agents enabled true
+set_toml_section_value "$config_path" agents max_concurrent_threads_per_session 3
+remove_toml_section_key "$config_path" agents max_threads
+remove_toml_section_key "$config_path" agents max_depth
+remove_toml_section_key "$config_path" features multi_agent
 
 if [[ "$set_sol_default" == true ]]; then
     set_top_level_toml_value "$config_path" model '"gpt-5.6-sol"'
@@ -250,7 +315,9 @@ if [[ "$enable_full_access" == true ]]; then
 fi
 
 merge_policy_block "$agents_md_path"
-cp -f -- "$agents_source"/*.toml "$agents_path/"
+for agent_file in "${expected_agent_files[@]}"; do
+    cp -f -- "$agents_source/$agent_file" "$agents_path/$agent_file"
+done
 
 printf 'Installed Task-Aware Agent configuration in %s\n' "$codex_home"
 printf 'Backup: %s\n' "$backup_path"

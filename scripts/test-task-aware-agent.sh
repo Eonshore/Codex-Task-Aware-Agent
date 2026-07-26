@@ -11,12 +11,15 @@ Validate an installed Codex Task-Aware Agent configuration.
 Options:
   --codex-home PATH  Target Codex home (default: $CODEX_HOME or ~/.codex)
   --skip-runtime     Skip the codex doctor runtime check
+  --config-only-runtime
+                      Require strict config loading but ignore unrelated doctor failures
   -h, --help         Show this help
 EOF
 }
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 skip_runtime=false
+config_only_runtime=false
 
 while (($# > 0)); do
     case "$1" in
@@ -30,6 +33,10 @@ while (($# > 0)); do
             ;;
         --skip-runtime)
             skip_runtime=true
+            shift
+            ;;
+        --config-only-runtime)
+            config_only_runtime=true
             shift
             ;;
         -h|--help)
@@ -69,11 +76,9 @@ agents_md_path="$codex_home/AGENTS.md"
 agents_path="$codex_home/agents"
 
 assert_file_contains "$config_path" \
-    '^\[features\][[:space:]]*$' \
-    '^multi_agent[[:space:]]*=[[:space:]]*true[[:space:]]*$' \
-    '^\[agents\][[:space:]]*$' \
-    '^max_threads[[:space:]]*=[[:space:]]*4[[:space:]]*$' \
-    '^max_depth[[:space:]]*=[[:space:]]*1[[:space:]]*$'
+    '^[[:space:]]*\[agents\][[:space:]]*(#.*)?$' \
+    '^enabled[[:space:]]*=[[:space:]]*true[[:space:]]*$' \
+    '^max_concurrent_threads_per_session[[:space:]]*=[[:space:]]*3[[:space:]]*$'
 
 assert_file_contains "$agents_md_path" \
     '<!-- BEGIN CODEX TASK-AWARE AGENT -->' \
@@ -81,6 +86,8 @@ assert_file_contains "$agents_md_path" \
     'agent_type[[:space:]]*=[[:space:]]*"luna_task"' \
     'agent_type[[:space:]]*=[[:space:]]*"terra_worker"' \
     'agent_type[[:space:]]*=[[:space:]]*"sol_specialist"' \
+    'fork_turns[[:space:]]*=[[:space:]]*"none"' \
+    'packet must explicitly tell the child not to delegate' \
     '<!-- END CODEX TASK-AWARE AGENT -->'
 
 assert_file_contains "$agents_path/luna-task.toml" \
@@ -113,7 +120,30 @@ fi
 
 if [[ "$skip_runtime" == false ]]; then
     if command -v codex >/dev/null 2>&1; then
-        CODEX_HOME="$codex_home" codex --strict-config doctor --summary --no-color --ascii
+        if [[ "$config_only_runtime" == true ]]; then
+            set +e
+            doctor_output=$(CODEX_HOME="$codex_home" codex --strict-config doctor --json --no-color 2>&1)
+            doctor_exit=$?
+            set -e
+            config_status=$(printf '%s\n' "$doctor_output" | awk '
+                /"config.load"[[:space:]]*:/ { in_config = 1 }
+                in_config && /"status"[[:space:]]*:/ {
+                    status = $0
+                    sub(/^.*"status"[[:space:]]*:[[:space:]]*"/, "", status)
+                    sub(/".*$/, "", status)
+                    print status
+                    exit
+                }
+            ')
+            if [[ "$config_status" != ok ]]; then
+                printf '%s\n' "$doctor_output" >&2
+                printf 'Codex strict config load failed with doctor exit %d for CODEX_HOME=%s.\n' "$doctor_exit" "$codex_home" >&2
+                exit 1
+            fi
+            printf 'Codex strict config load passed for CODEX_HOME=%s.\n' "$codex_home"
+        else
+            CODEX_HOME="$codex_home" codex --strict-config doctor --summary --no-color --ascii
+        fi
     else
         printf '%s\n' 'Warning: codex was not found; file validation passed but runtime validation was skipped.' >&2
     fi

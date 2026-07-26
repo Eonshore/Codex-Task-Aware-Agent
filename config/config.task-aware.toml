@@ -1,8 +1,4 @@
-# Merge these sections into ~/.codex/config.toml.
-
-[features]
-multi_agent = true
-
+# Merge this section into ~/.codex/config.toml.
 [agents]
-max_threads = 4
-max_depth = 1
+enabled = true
+max_concurrent_threads_per_session = 3

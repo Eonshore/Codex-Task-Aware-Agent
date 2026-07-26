@@ -42,8 +42,12 @@ Never spawn an agent merely to restate the request, create a generic plan, or
 duplicate another agent's investigation.
 
 Use at most three direct children unless the user explicitly requests more.
-Keep delegation at one level; children must not spawn descendants. Use only one
-writing agent for overlapping files or state.
+Every spawn must set `fork_turns = "none"`.
+The runtime configuration caps open child threads at three, excluding the
+primary thread. Keep delegation at one level; children must not spawn
+descendants. Do not rely on `agents.max_depth` for this boundary because Codex
+V2 ignores that legacy setting. Use only one writing agent for overlapping
+files or state.
 
 ### Task packet
 
@@ -55,6 +59,7 @@ Give every child only the minimum task packet required:
 - completion condition;
 - required output shape.
 
+The packet must explicitly tell the child not to delegate.
 Require distilled findings instead of raw logs. Escalate to a stronger role
 only after the cheaper role returns `NEEDS_ESCALATION` with concrete evidence.
 After a spawn succeeds, the parent must not perform the same assigned work in

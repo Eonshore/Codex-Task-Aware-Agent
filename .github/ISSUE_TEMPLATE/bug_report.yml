@@ -1,0 +1,52 @@
+name: バグ報告
+description: 再現可能な不具合を報告します
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        セキュリティ上の問題は公開 issue に書かず、Security advisory から報告してください。
+  - type: input
+    id: codex-version
+    attributes:
+      label: Codex のバージョン
+      placeholder: codex-cli 0.145.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 実行環境
+      options:
+        - Windows / PowerShell
+        - Linux / Bash
+        - WSL / Bash
+        - その他
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順
+      description: 使用したコマンドと、最小の再現手順を書いてください。秘密情報は削除してください。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した結果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の結果
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 検証結果
+      description: validator と `codex doctor --summary --no-color --ascii` の、秘密情報を除いた結果を書いてください。

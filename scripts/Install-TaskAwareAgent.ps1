@@ -18,6 +18,12 @@ $AgentsPath = Join-Path $CodexHome 'agents'
 $AgentsMdPath = Join-Path $CodexHome 'AGENTS.md'
 $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $BackupPath = Join-Path $CodexHome "task-aware-backups/$Timestamp"
+$BackupSuffix = 0
+
+while (Test-Path -LiteralPath $BackupPath) {
+    $BackupSuffix++
+    $BackupPath = Join-Path $CodexHome "task-aware-backups/$Timestamp-$BackupSuffix"
+}
 
 function Backup-IfPresent {
     param([Parameter(Mandatory)][string]$Path)
@@ -33,13 +39,13 @@ function Backup-IfPresent {
 
 function Set-TomlSectionValues {
     param(
-        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content,
         [Parameter(Mandatory)][string]$Section,
         [Parameter(Mandatory)][System.Collections.Specialized.OrderedDictionary]$Values
     )
 
     $escapedSection = [regex]::Escape($Section)
-    $headerPattern = "(?m)^\[$escapedSection\]\s*$"
+    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?\r?$"
     $header = [regex]::Match($Content, $headerPattern)
 
     if (-not $header.Success) {
@@ -52,13 +58,13 @@ function Set-TomlSectionValues {
 
     $bodyStart = $header.Index + $header.Length
     $remaining = $Content.Substring($bodyStart)
-    $nextHeader = [regex]::Match($remaining, '(?m)^\[[^\r\n]+\]\s*$')
+    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
     $bodyLength = if ($nextHeader.Success) { $nextHeader.Index } else { $remaining.Length }
     $body = $remaining.Substring(0, $bodyLength)
 
     foreach ($entry in $Values.GetEnumerator()) {
         $escapedKey = [regex]::Escape([string]$entry.Key)
-        $keyPattern = "(?m)^$escapedKey\s*=.*$"
+        $keyPattern = "(?m)^[ \t]*$escapedKey[ \t]*=.*$"
         $replacement = "$($entry.Key) = $($entry.Value)"
         if ([regex]::IsMatch($body, $keyPattern)) {
             $body = [regex]::Replace($body, $keyPattern, $replacement, 1)
@@ -71,19 +77,49 @@ function Set-TomlSectionValues {
     return $Content.Substring(0, $bodyStart) + $body + $remaining.Substring($bodyLength)
 }
 
+function Remove-TomlSectionKeys {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content,
+        [Parameter(Mandatory)][string]$Section,
+        [Parameter(Mandatory)][string[]]$Keys
+    )
+
+    $escapedSection = [regex]::Escape($Section)
+    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?\r?$"
+    $header = [regex]::Match($Content, $headerPattern)
+    if (-not $header.Success) { return $Content }
+
+    $bodyStart = $header.Index + $header.Length
+    $remaining = $Content.Substring($bodyStart)
+    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
+    $bodyLength = if ($nextHeader.Success) { $nextHeader.Index } else { $remaining.Length }
+    $body = $remaining.Substring(0, $bodyLength)
+
+    foreach ($key in $Keys) {
+        $escapedKey = [regex]::Escape($key)
+        $body = [regex]::Replace(
+            $body,
+            "(?m)^[ \t]*$escapedKey[ \t]*=.*(?:\r?\n|$)",
+            ''
+        )
+    }
+
+    return $Content.Substring(0, $bodyStart) + $body + $remaining.Substring($bodyLength)
+}
+
 function Set-TopLevelTomlValue {
     param(
-        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content,
         [Parameter(Mandatory)][string]$Key,
         [Parameter(Mandatory)][string]$Value
     )
 
-    $firstSection = [regex]::Match($Content, '(?m)^\[[^\r\n]+\]\s*$')
+    $firstSection = [regex]::Match($Content, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
     $headLength = if ($firstSection.Success) { $firstSection.Index } else { $Content.Length }
     $head = $Content.Substring(0, $headLength)
     $tail = $Content.Substring($headLength)
     $escapedKey = [regex]::Escape($Key)
-    $keyPattern = "(?m)^$escapedKey\s*=.*$"
+    $keyPattern = "(?m)^[ \t]*$escapedKey[ \t]*=.*$"
     $replacement = "$Key = $Value"
 
     if ([regex]::IsMatch($head, $keyPattern)) {
@@ -96,6 +132,44 @@ function Set-TopLevelTomlValue {
     return $head + $tail
 }
 
+$expectedAgentFiles = @(
+    'luna-task.toml',
+    'luna-task-max.toml',
+    'terra-worker.toml',
+    'terra-worker-max.toml',
+    'sol-specialist.toml',
+    'sol-specialist-max.toml'
+)
+$retiredAgentFiles = @('luna-task-high.toml', 'terra-worker-high.toml')
+if (-not (Test-Path -LiteralPath $PolicySource -PathType Leaf)) {
+    throw "Missing policy source: $PolicySource"
+}
+foreach ($agentFile in $expectedAgentFiles) {
+    $agentSourcePath = Join-Path $AgentsSource $agentFile
+    if (-not (Test-Path -LiteralPath $agentSourcePath -PathType Leaf)) {
+        throw "Missing agent source: $agentSourcePath"
+    }
+}
+
+if ($EnableFullAccess -and (Test-Path -LiteralPath $ConfigPath)) {
+    $existingConfig = Get-Content -Raw -LiteralPath $ConfigPath
+    if ($existingConfig -match '(?m)^[ \t]*default_permissions[ \t]*=') {
+        throw 'Cannot use -EnableFullAccess while config.toml defines default_permissions. Remove one permission system before retrying.'
+    }
+}
+
+if (Test-Path -LiteralPath $AgentsMdPath) {
+    $existingAgentsMd = Get-Content -Raw -LiteralPath $AgentsMdPath
+    $beginMarker = '<!-- BEGIN CODEX TASK-AWARE AGENT -->'
+    $endMarker = '<!-- END CODEX TASK-AWARE AGENT -->'
+    $beginCount = [regex]::Matches($existingAgentsMd, [regex]::Escape($beginMarker)).Count
+    $endCount = [regex]::Matches($existingAgentsMd, [regex]::Escape($endMarker)).Count
+    $completeBlock = "(?s)" + [regex]::Escape($beginMarker) + ".*?" + [regex]::Escape($endMarker)
+    if ($beginCount -ne $endCount -or $beginCount -gt 1 -or ($beginCount -eq 1 -and $existingAgentsMd -notmatch $completeBlock)) {
+        throw 'AGENTS.md contains malformed or duplicate Task-Aware Agent markers. Repair the marker block before retrying.'
+    }
+}
+
 if (-not $PSCmdlet.ShouldProcess($CodexHome, 'Install Codex Task-Aware Agent configuration')) {
     return
 }
@@ -104,8 +178,11 @@ New-Item -ItemType Directory -Force -Path $CodexHome, $AgentsPath, $BackupPath |
 
 Backup-IfPresent -Path $ConfigPath
 Backup-IfPresent -Path $AgentsMdPath
-Get-ChildItem -LiteralPath $AgentsSource -Filter '*.toml' | ForEach-Object {
-    Backup-IfPresent -Path (Join-Path $AgentsPath $_.Name)
+foreach ($agentFile in $expectedAgentFiles) {
+    Backup-IfPresent -Path (Join-Path $AgentsPath $agentFile)
+}
+foreach ($agentFile in $retiredAgentFiles) {
+    Backup-IfPresent -Path (Join-Path $AgentsPath $agentFile)
 }
 
 $config = if (Test-Path -LiteralPath $ConfigPath) {
@@ -113,13 +190,17 @@ $config = if (Test-Path -LiteralPath $ConfigPath) {
 }
 else { '' }
 
-$config = Set-TomlSectionValues -Content $config -Section 'features' -Values ([ordered]@{
-    multi_agent = 'true'
-})
 $config = Set-TomlSectionValues -Content $config -Section 'agents' -Values ([ordered]@{
-    max_threads = '4'
-    max_depth = '1'
+    enabled = 'true'
+    max_concurrent_threads_per_session = '3'
 })
+$config = Remove-TomlSectionKeys -Content $config -Section 'agents' -Keys @(
+    'max_threads',
+    'max_depth'
+)
+$config = Remove-TomlSectionKeys -Content $config -Section 'features' -Keys @(
+    'multi_agent'
+)
 
 if ($SetSolDefault) {
     $config = Set-TopLevelTomlValue -Content $config -Key 'model' -Value '"gpt-5.6-sol"'
@@ -150,7 +231,15 @@ else {
 }
 Set-Content -LiteralPath $AgentsMdPath -Value $agentsMd.TrimStart() -Encoding utf8
 
-Copy-Item -Path (Join-Path $AgentsSource '*.toml') -Destination $AgentsPath -Force
+foreach ($agentFile in $expectedAgentFiles) {
+    Copy-Item -LiteralPath (Join-Path $AgentsSource $agentFile) -Destination $AgentsPath -Force
+}
+foreach ($agentFile in $retiredAgentFiles) {
+    $retiredPath = Join-Path $AgentsPath $agentFile
+    if (Test-Path -LiteralPath $retiredPath -PathType Leaf) {
+        Remove-Item -LiteralPath $retiredPath -Force
+    }
+}
 
 Write-Host "Installed Task-Aware Agent configuration in $CodexHome"
 Write-Host "Backup: $BackupPath"

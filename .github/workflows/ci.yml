@@ -1,0 +1,217 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.145.0' }}
+
+jobs:
+  windows:
+    name: Windows clean-home round trip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install validation runtime
+        shell: pwsh
+        run: |
+          npm install --global $env:CODEX_PACKAGE
+          codex --version
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -LiteralPath ./scripts -Filter '*.ps1' | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Error $_ }
+            }
+          }
+          if ($failed) { throw 'PowerShell parsing failed.' }
+
+      - name: Validate installer behavior
+        shell: pwsh
+        run: |
+          $cleanHome = Join-Path $env:RUNNER_TEMP 'task-aware-clean'
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $cleanHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $cleanHome -ConfigOnlyRuntime
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $cleanHome
+          $backupCount = @(Get-ChildItem -Directory -LiteralPath (Join-Path $cleanHome 'task-aware-backups')).Count
+          if ($backupCount -lt 2) { throw 'Repeated installation reused a backup directory.' }
+
+          $migrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-migration'
+          New-Item -ItemType Directory -Force -Path $migrationHome | Out-Null
+          $migrationConfig = @(
+            '[features] # legacy feature section'
+            '  multi_agent = true'
+            ''
+            '[agents] # preserve this user comment'
+            '  enabled = false'
+            '  max_concurrent_threads_per_session = 9'
+            '  max_threads = 4'
+            '  max_depth = 1'
+            ''
+          ) -join "`r`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $migrationHome 'config.toml'),
+            $migrationConfig,
+            [Text.UTF8Encoding]::new($false)
+          )
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $migrationHome
+          $migrated = Get-Content -Raw -LiteralPath (Join-Path $migrationHome 'config.toml')
+          if ($migrated -match '(?m)^\s*(multi_agent|max_threads|max_depth)\s*=') {
+            throw 'A legacy multi-agent key remained after migration.'
+          }
+          if ([regex]::Matches($migrated, '(?m)^\s*\[agents\]\s*(?:#.*)?$').Count -ne 1) {
+            throw 'The agents table was duplicated during migration.'
+          }
+          if ([regex]::Matches($migrated, '(?m)^\s*enabled\s*=').Count -ne 1) {
+            throw 'The enabled key was duplicated during migration.'
+          }
+          if ([regex]::Matches($migrated, '(?m)^\s*max_concurrent_threads_per_session\s*=').Count -ne 1) {
+            throw 'The thread limit key was duplicated during migration.'
+          }
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $migrationHome -ConfigOnlyRuntime
+
+          $conflictHome = Join-Path $env:RUNNER_TEMP 'task-aware-conflict'
+          New-Item -ItemType Directory -Force -Path $conflictHome | Out-Null
+          'default_permissions = ":workspace"' |
+            Set-Content -LiteralPath (Join-Path $conflictHome 'config.toml') -Encoding utf8
+          $stopped = $false
+          try {
+            & ./scripts/Install-TaskAwareAgent.ps1 `
+              -CodexHome $conflictHome -EnableFullAccess -ErrorAction Stop
+          }
+          catch {
+            $stopped = $true
+          }
+          if (-not $stopped) { throw 'The permission conflict was not rejected.' }
+
+          $malformedHome = Join-Path $env:RUNNER_TEMP 'task-aware-malformed-markers'
+          New-Item -ItemType Directory -Force -Path $malformedHome | Out-Null
+          '<!-- BEGIN CODEX TASK-AWARE AGENT -->' |
+            Set-Content -LiteralPath (Join-Path $malformedHome 'AGENTS.md') -Encoding utf8
+          $stopped = $false
+          try {
+            & ./scripts/Install-TaskAwareAgent.ps1 `
+              -CodexHome $malformedHome -ErrorAction Stop
+          }
+          catch {
+            $stopped = $true
+          }
+          if (-not $stopped) { throw 'Malformed AGENTS.md markers were not rejected.' }
+
+  linux:
+    name: Linux clean-home round trip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install validation runtime
+        run: |
+          npm install --global "$CODEX_PACKAGE"
+          codex --version
+
+      - name: Parse Bash scripts
+        run: |
+          bash -n scripts/install-task-aware-agent.sh
+          bash -n scripts/test-task-aware-agent.sh
+          shellcheck -S warning \
+            scripts/install-task-aware-agent.sh \
+            scripts/test-task-aware-agent.sh
+
+      - name: Validate installer behavior
+        run: |
+          set -Eeuo pipefail
+
+          clean_home="$RUNNER_TEMP/task-aware-clean"
+          scripts/install-task-aware-agent.sh --codex-home "$clean_home"
+          scripts/test-task-aware-agent.sh \
+            --codex-home "$clean_home" \
+            --config-only-runtime
+          scripts/install-task-aware-agent.sh --codex-home "$clean_home"
+          backup_count=$(find "$clean_home/task-aware-backups" -mindepth 1 -maxdepth 1 -type d | wc -l)
+          if ((backup_count < 2)); then
+            printf '%s\n' 'Repeated installation reused a backup directory.' >&2
+            exit 1
+          fi
+
+          migration_home="$RUNNER_TEMP/task-aware-migration"
+          mkdir -p -- "$migration_home"
+          cat > "$migration_home/config.toml" <<'EOF'
+          [features] # legacy feature section
+            multi_agent = true
+
+          [agents] # preserve this user comment
+            enabled = false
+            max_concurrent_threads_per_session = 9
+            max_threads = 4
+            max_depth = 1
+          EOF
+          scripts/install-task-aware-agent.sh --codex-home "$migration_home"
+          if grep -Eq '^[[:space:]]*(multi_agent|max_threads|max_depth)[[:space:]]*=' \
+            "$migration_home/config.toml"; then
+            printf '%s\n' 'A legacy multi-agent key remained after migration.' >&2
+            exit 1
+          fi
+          if [[ $(grep -Ec '^[[:space:]]*\[agents\][[:space:]]*(#.*)?$' "$migration_home/config.toml") -ne 1 ]]; then
+            printf '%s\n' 'The agents table was duplicated during migration.' >&2
+            exit 1
+          fi
+          if [[ $(grep -Ec '^[[:space:]]*enabled[[:space:]]*=' "$migration_home/config.toml") -ne 1 ]]; then
+            printf '%s\n' 'The enabled key was duplicated during migration.' >&2
+            exit 1
+          fi
+          if [[ $(grep -Ec '^[[:space:]]*max_concurrent_threads_per_session[[:space:]]*=' "$migration_home/config.toml") -ne 1 ]]; then
+            printf '%s\n' 'The thread limit key was duplicated during migration.' >&2
+            exit 1
+          fi
+          scripts/test-task-aware-agent.sh \
+            --codex-home "$migration_home" \
+            --config-only-runtime
+
+          conflict_home="$RUNNER_TEMP/task-aware-conflict"
+          mkdir -p -- "$conflict_home"
+          printf '%s\n' 'default_permissions = ":workspace"' > "$conflict_home/config.toml"
+          if scripts/install-task-aware-agent.sh \
+            --codex-home "$conflict_home" \
+            --enable-full-access; then
+            printf '%s\n' 'The permission conflict was not rejected.' >&2
+            exit 1
+          fi
+
+          malformed_home="$RUNNER_TEMP/task-aware-malformed-markers"
+          mkdir -p -- "$malformed_home"
+          printf '%s\n' '<!-- BEGIN CODEX TASK-AWARE AGENT -->' > "$malformed_home/AGENTS.md"
+          if scripts/install-task-aware-agent.sh --codex-home "$malformed_home"; then
+            printf '%s\n' 'Malformed AGENTS.md markers were not rejected.' >&2
+            exit 1
+          fi

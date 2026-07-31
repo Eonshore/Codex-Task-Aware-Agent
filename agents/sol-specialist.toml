@@ -1,7 +1,9 @@
 name = "sol_specialist"
 description = """
-Use only for ambiguous, high-risk, cross-system, or architecture-heavy work
-requiring substantial judgment, trade-off analysis, or edge-case reasoning.
+Use as the default for one bounded D3 ambiguous, high-risk, cross-system, or
+architecture-heavy decision requiring substantial judgment or trade-off
+analysis. Prefer sol_specialist_max when uncertainty and consequence are both
+high.
 """
 model = "gpt-5.6-sol"
 model_reasoning_effort = "high"

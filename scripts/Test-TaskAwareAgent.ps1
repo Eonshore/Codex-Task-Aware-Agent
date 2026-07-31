@@ -151,7 +151,7 @@ if ($codex -and -not $SkipRuntime) {
     try {
         $env:CODEX_HOME = [IO.Path]::GetFullPath($CodexHome)
         if ($ConfigOnlyRuntime) {
-            $doctorOutput = (& $codex.Source --strict-config doctor --json --no-color 2>&1 | Out-String)
+            $doctorOutput = (& $codex.Source --strict-config doctor --json --no-color | Out-String)
             $doctorExitCode = $LASTEXITCODE
             try {
                 $doctorReport = $doctorOutput | ConvertFrom-Json -Depth 20
@@ -186,4 +186,5 @@ elseif (-not $codex -and -not $SkipRuntime) {
     Write-Warning 'codex was not found; file validation passed but runtime validation was skipped.'
 }
 
+$global:LASTEXITCODE = 0
 Write-Host 'Task-Aware Agent validation passed.'

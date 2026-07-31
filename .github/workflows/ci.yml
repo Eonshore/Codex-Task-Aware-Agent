@@ -65,16 +65,22 @@ jobs:
 
           $migrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-migration'
           New-Item -ItemType Directory -Force -Path $migrationHome | Out-Null
-          @'
-          [features] # legacy feature section
-            multi_agent = true
-
-          [agents] # preserve this user comment
-            enabled = false
-            max_concurrent_threads_per_session = 9
-            max_threads = 4
-            max_depth = 1
-          '@ | Set-Content -LiteralPath (Join-Path $migrationHome 'config.toml') -Encoding utf8
+          $migrationConfig = @(
+            '[features] # legacy feature section'
+            '  multi_agent = true'
+            ''
+            '[agents] # preserve this user comment'
+            '  enabled = false'
+            '  max_concurrent_threads_per_session = 9'
+            '  max_threads = 4'
+            '  max_depth = 1'
+            ''
+          ) -join "`r`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $migrationHome 'config.toml'),
+            $migrationConfig,
+            [Text.UTF8Encoding]::new($false)
+          )
           & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $migrationHome
           $migrated = Get-Content -Raw -LiteralPath (Join-Path $migrationHome 'config.toml')
           if ($migrated -match '(?m)^\s*(multi_agent|max_threads|max_depth)\s*=') {

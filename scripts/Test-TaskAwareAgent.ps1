@@ -43,7 +43,7 @@ $agentsMdPath = Join-Path $CodexHome 'AGENTS.md'
 $agentsPath = Join-Path $CodexHome 'agents'
 
 Assert-FileContains -Path $configPath -Patterns @(
-    '(?m)^[ \t]*\[agents\][ \t]*(?:#[^\r\n]*)?$',
+    '(?m)^[ \t]*\[agents\][ \t]*(?:#[^\r\n]*)?\r?$',
     '(?m)^enabled\s*=\s*true\s*$',
     '(?m)^max_concurrent_threads_per_session\s*=\s*3\s*$'
 )

@@ -45,7 +45,7 @@ function Set-TomlSectionValues {
     )
 
     $escapedSection = [regex]::Escape($Section)
-    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?$"
+    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?\r?$"
     $header = [regex]::Match($Content, $headerPattern)
 
     if (-not $header.Success) {
@@ -58,7 +58,7 @@ function Set-TomlSectionValues {
 
     $bodyStart = $header.Index + $header.Length
     $remaining = $Content.Substring($bodyStart)
-    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?$')
+    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
     $bodyLength = if ($nextHeader.Success) { $nextHeader.Index } else { $remaining.Length }
     $body = $remaining.Substring(0, $bodyLength)
 
@@ -85,13 +85,13 @@ function Remove-TomlSectionKeys {
     )
 
     $escapedSection = [regex]::Escape($Section)
-    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?$"
+    $headerPattern = "(?m)^[ \t]*\[$escapedSection\][ \t]*(?:#[^\r\n]*)?\r?$"
     $header = [regex]::Match($Content, $headerPattern)
     if (-not $header.Success) { return $Content }
 
     $bodyStart = $header.Index + $header.Length
     $remaining = $Content.Substring($bodyStart)
-    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?$')
+    $nextHeader = [regex]::Match($remaining, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
     $bodyLength = if ($nextHeader.Success) { $nextHeader.Index } else { $remaining.Length }
     $body = $remaining.Substring(0, $bodyLength)
 
@@ -114,7 +114,7 @@ function Set-TopLevelTomlValue {
         [Parameter(Mandatory)][string]$Value
     )
 
-    $firstSection = [regex]::Match($Content, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?$')
+    $firstSection = [regex]::Match($Content, '(?m)^[ \t]*\[[^\]\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$')
     $headLength = if ($firstSection.Success) { $firstSection.Index } else { $Content.Length }
     $head = $Content.Substring(0, $headLength)
     $tail = $Content.Substring($headLength)

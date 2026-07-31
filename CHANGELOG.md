@@ -2,6 +2,25 @@
 
 このプロジェクトは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の形式と [Semantic Versioning](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### 変更
+
+- 現行の価格差を踏まえ、Luna Low の D1 を固定入力、明示的な出力契約、客観的完了条件を持つ限定的な読み取り専用調査・検証まで拡張。
+- Terra Medium の D2 を、状態変更を伴う実装、tool-heavy な複数工程、通常判断が必要な調査・検証として明確化。
+- D1 に Luna Max、D2 に Terra Max、D3 に Sol Max の上位 variant を追加。
+- 中間の xhigh role は設けず、標準とMaxの二段階に統一。
+- 能力クラスを先に決め、同じクラス内で標準またはMax枠を選ぶ二段階ルーティングへ変更。
+- 価格低下を、Maxによる完全性向上または手戻り回避を選びやすくする根拠として反映。
+- 最小十分な役割を選びつつ、D0 の細分化、明白な D2/D3 の意図的な過小ルーティング、不要な microtask fan-out を禁止。
+- 価格低下後も、統合負荷と競合を抑えるため同時に開く子スレッドの上限を3つに維持。
+
+### 検証
+
+- Windows/Linux validator に、価格対応後の D1/D2 境界と過剰委譲防止規則の検査を追加。
+- Windows/Linux installer と validator を六 role の配置、model、effort、sandbox 検査へ拡張し、旧Luna/Terra High roleをbackup後に除去する移行を追加。
+- release 前の live probe を、六 role の model/effort 確認と D0 から D3 までの標準・Maxルーティング確認へ拡張。
+
 ## [0.1.0] - 2026-07-26
 
 初回の公開候補です。

@@ -132,7 +132,15 @@ function Set-TopLevelTomlValue {
     return $head + $tail
 }
 
-$expectedAgentFiles = @('luna-task.toml', 'terra-worker.toml', 'sol-specialist.toml')
+$expectedAgentFiles = @(
+    'luna-task.toml',
+    'luna-task-max.toml',
+    'terra-worker.toml',
+    'terra-worker-max.toml',
+    'sol-specialist.toml',
+    'sol-specialist-max.toml'
+)
+$retiredAgentFiles = @('luna-task-high.toml', 'terra-worker-high.toml')
 if (-not (Test-Path -LiteralPath $PolicySource -PathType Leaf)) {
     throw "Missing policy source: $PolicySource"
 }
@@ -171,6 +179,9 @@ New-Item -ItemType Directory -Force -Path $CodexHome, $AgentsPath, $BackupPath |
 Backup-IfPresent -Path $ConfigPath
 Backup-IfPresent -Path $AgentsMdPath
 foreach ($agentFile in $expectedAgentFiles) {
+    Backup-IfPresent -Path (Join-Path $AgentsPath $agentFile)
+}
+foreach ($agentFile in $retiredAgentFiles) {
     Backup-IfPresent -Path (Join-Path $AgentsPath $agentFile)
 }
 
@@ -222,6 +233,12 @@ Set-Content -LiteralPath $AgentsMdPath -Value $agentsMd.TrimStart() -Encoding ut
 
 foreach ($agentFile in $expectedAgentFiles) {
     Copy-Item -LiteralPath (Join-Path $AgentsSource $agentFile) -Destination $AgentsPath -Force
+}
+foreach ($agentFile in $retiredAgentFiles) {
+    $retiredPath = Join-Path $AgentsPath $agentFile
+    if (Test-Path -LiteralPath $retiredPath -PathType Leaf) {
+        Remove-Item -LiteralPath $retiredPath -Force
+    }
 }
 
 Write-Host "Installed Task-Aware Agent configuration in $CodexHome"

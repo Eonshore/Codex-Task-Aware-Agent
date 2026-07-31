@@ -30,6 +30,14 @@ function Assert-FileContains {
     }
 }
 
+function Assert-FileAbsent {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (Test-Path -LiteralPath $Path) {
+        $failures.Add("Unexpected retired file: $Path")
+    }
+}
+
 $configPath = Join-Path $CodexHome 'config.toml'
 $agentsMdPath = Join-Path $CodexHome 'AGENTS.md'
 $agentsPath = Join-Path $CodexHome 'agents'
@@ -44,24 +52,44 @@ Assert-FileContains -Path $agentsMdPath -Patterns @(
     '<!-- BEGIN CODEX TASK-AWARE AGENT -->',
     'Task-aware delegation policy',
     'agent_type\s*=\s*"luna_task"',
+    'agent_type\s*=\s*"luna_task_max"',
     'agent_type\s*=\s*"terra_worker"',
+    'agent_type\s*=\s*"terra_worker_max"',
     'agent_type\s*=\s*"sol_specialist"',
+    'agent_type\s*=\s*"sol_specialist_max"',
+    'Classify capability first, then choose reasoning effort',
+    'Higher effort never expands a role''s permissions',
+    'Lower model prices reduce the\s+threshold for elevated effort',
+    'Use Max as the single elevated effort for D1-D3',
+    'Do not add an xhigh middle lane',
+    'concrete reason the\s+base effort is likely to be materially more error-prone',
+    'bounded read-only investigation or verification',
+    'Inputs, the\s+output contract, and the success condition must be explicit',
+    'State-changing implementation',
+    'tool-heavy multi-step work',
+    'requires ordinary judgment',
+    'Do not split an atomic D0 item solely because Luna is inexpensive',
+    'Do not route an obvious D2 or D3 item through a cheaper role',
     'fork_turns\s*=\s*"none"',
     'packet must explicitly tell the child not to delegate',
     '<!-- END CODEX TASK-AWARE AGENT -->'
 )
 
 $expectedAgents = [ordered]@{
-    'luna-task.toml' = [ordered]@{ Model = 'gpt-5.6-luna'; Effort = 'low'; Sandbox = 'read-only' }
-    'terra-worker.toml' = [ordered]@{ Model = 'gpt-5.6-terra'; Effort = 'medium'; Sandbox = $null }
-    'sol-specialist.toml' = [ordered]@{ Model = 'gpt-5.6-sol'; Effort = 'high'; Sandbox = 'read-only' }
+    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-5.6-luna'; Effort = 'low'; Sandbox = 'read-only' }
+    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-5.6-luna'; Effort = 'max'; Sandbox = 'read-only' }
+    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-5.6-terra'; Effort = 'medium'; Sandbox = $null }
+    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-5.6-terra'; Effort = 'max'; Sandbox = $null }
+    'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-5.6-sol'; Effort = 'high'; Sandbox = 'read-only' }
+    'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-5.6-sol'; Effort = 'max'; Sandbox = 'read-only' }
 }
 
 foreach ($entry in $expectedAgents.GetEnumerator()) {
     $escapedModel = [regex]::Escape([string]$entry.Value.Model)
     $escapedEffort = [regex]::Escape([string]$entry.Value.Effort)
+    $escapedName = [regex]::Escape([string]$entry.Value.Name)
     $patterns = @(
-        '(?m)^name\s*=\s*"[^\"]+"\s*$',
+        "(?m)^name\s*=\s*`"$escapedName`"\s*$",
         '(?m)^description\s*=\s*"""',
         '(?m)^developer_instructions\s*=\s*"""',
         "(?m)^model\s*=\s*`"$escapedModel`"\s*$",
@@ -71,8 +99,46 @@ foreach ($entry in $expectedAgents.GetEnumerator()) {
         $escapedSandbox = [regex]::Escape([string]$entry.Value.Sandbox)
         $patterns += "(?m)^sandbox_mode\s*=\s*`"$escapedSandbox`"\s*$"
     }
+    if ($entry.Key -eq 'luna-task.toml') {
+        $patterns += 'Use as the default for compact, homogeneous D1'
+        $patterns += 'bounded read-only investigation or'
+        $patterns += 'fixed inputs, an explicit output contract'
+        $patterns += 'success condition'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+    }
+    elseif ($entry.Key -eq 'luna-task-max.toml') {
+        $patterns += 'D1 work that remains deterministic, read-only, and objectively'
+        $patterns += 'dense cross-checking across heterogeneous inputs'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+        $patterns += 'Use Max reasoning for completeness and cross-checking'
+        $patterns += 'not to broaden the task''s\s+capability boundary'
+    }
+    elseif ($entry.Key -eq 'terra-worker.toml') {
+        $patterns += 'Use as the default for bounded D2 state-changing implementation'
+        $patterns += 'tool-heavy\s+multi-step work'
+        $patterns += 'requires\s+ordinary\s+judgment'
+    }
+    elseif ($entry.Key -eq 'terra-worker-max.toml') {
+        $patterns += 'D2 work that stays within ordinary engineering judgment'
+        $patterns += 'many\s+coupled constraints'
+        $patterns += 'Do not use for unresolved architectural trade-offs'
+        $patterns += 'Use Max reasoning for coupled constraints, edge cases, and verification'
+        $patterns += 'not to\s+broaden the task''s capability boundary'
+    }
+    elseif ($entry.Key -eq 'sol-specialist-max.toml') {
+        $patterns += 'D3 work when both uncertainty and consequence are high'
+        $patterns += 'security-sensitive trade-offs'
+        $patterns += 'reasoning variance'
+    }
+    elseif ($entry.Key -eq 'sol-specialist.toml') {
+        $patterns += 'Use as the default for one bounded D3'
+        $patterns += 'Prefer sol_specialist_max when uncertainty and consequence are both'
+    }
     Assert-FileContains -Path (Join-Path $agentsPath $entry.Key) -Patterns $patterns
 }
+
+Assert-FileAbsent -Path (Join-Path $agentsPath 'luna-task-high.toml')
+Assert-FileAbsent -Path (Join-Path $agentsPath 'terra-worker-high.toml')
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Error $_ }

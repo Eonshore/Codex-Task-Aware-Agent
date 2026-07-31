@@ -1,7 +1,9 @@
 name = "terra_worker"
 description = """
-Use for bounded multi-step investigation, ordinary implementation,
-test analysis, or tool-heavy work whose success criteria are already clear.
+Use as the default for bounded D2 state-changing implementation, tool-heavy
+multi-step work, or investigation and verification that requires ordinary
+judgment while keeping clear success criteria. Prefer terra_worker_max when
+coupled constraints, difficult debugging, or expensive rework justify Max.
 """
 model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"

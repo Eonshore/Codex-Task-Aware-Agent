@@ -70,7 +70,15 @@ done
 [[ -f "$policy_source" ]] || die "missing policy file: $policy_source"
 command -v awk >/dev/null || die 'awk is required'
 
-expected_agent_files=(luna-task.toml terra-worker.toml sol-specialist.toml)
+expected_agent_files=(
+    luna-task.toml
+    luna-task-max.toml
+    terra-worker.toml
+    terra-worker-max.toml
+    sol-specialist.toml
+    sol-specialist-max.toml
+)
+retired_agent_files=(luna-task-high.toml terra-worker-high.toml)
 for agent_file in "${expected_agent_files[@]}"; do
     [[ -f "$agents_source/$agent_file" ]] || die "missing agent file: $agents_source/$agent_file"
 done
@@ -295,6 +303,9 @@ backup_if_present "$agents_md_path"
 for agent_file in "${expected_agent_files[@]}"; do
     backup_if_present "$agents_path/$agent_file"
 done
+for agent_file in "${retired_agent_files[@]}"; do
+    backup_if_present "$agents_path/$agent_file"
+done
 
 touch -- "$config_path" "$agents_md_path"
 
@@ -317,6 +328,9 @@ fi
 merge_policy_block "$agents_md_path"
 for agent_file in "${expected_agent_files[@]}"; do
     cp -f -- "$agents_source/$agent_file" "$agents_path/$agent_file"
+done
+for agent_file in "${retired_agent_files[@]}"; do
+    rm -f -- "$agents_path/$agent_file"
 done
 
 printf 'Installed Task-Aware Agent configuration in %s\n' "$codex_home"

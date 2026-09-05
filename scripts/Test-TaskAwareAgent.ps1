@@ -53,35 +53,50 @@ Assert-FileContains -Path $agentsMdPath -Patterns @(
     'Task-aware delegation policy',
     'agent_type\s*=\s*"luna_task"',
     'agent_type\s*=\s*"luna_task_max"',
+    'agent_type\s*=\s*"luna_task_medium"',
+    'agent_type\s*=\s*"astra_architect"',
+    'agent_type\s*=\s*"astra_architect_max"',
     'agent_type\s*=\s*"terra_worker"',
     'agent_type\s*=\s*"terra_worker_max"',
     'agent_type\s*=\s*"sol_specialist"',
     'agent_type\s*=\s*"sol_specialist_max"',
     'Classify capability first, then choose reasoning effort',
     'Higher effort never expands a role''s permissions',
-    'Lower model prices reduce the\s+threshold for elevated effort',
-    'Use Max as the single elevated effort for D1-D3',
-    'Do not add an xhigh middle lane',
-    'concrete reason the\s+base effort is likely to be materially more error-prone',
+    'The target parent is GPT-6 Astra',
+    'Children never delegate',
+    'D4 synthesis requires findings from at least two independent D3 work items',
+    'same three-child limit',
+    'For D1 Medium, state what reconciliation makes Low insufficient',
+    'Keep verification proportional to the change',
+    'All nine child roles use gpt-6-astra with low, medium, high, xhigh, or max reasoning',
+    'D1 Low/Medium/High, D2 Medium/High, D3 High/xhigh, and D4 xhigh/Max',
+    'D3 uses Astra High by default and Astra xhigh',
+    'The luna, terra, sol, and _max names no longer specify the model or effort',
+    'include the concrete reason the standard role',
+    'explain why Medium is more error-prone',
+    'for D3, explain why High is insufficient',
     'bounded read-only investigation or verification',
     'Inputs, the\s+output contract, and the success condition must be explicit',
     'State-changing implementation',
     'tool-heavy multi-step work',
     'requires ordinary judgment',
-    'Do not split an atomic D0 item solely because Luna is inexpensive',
-    'Do not route an obvious D2 or D3 item through a cheaper role',
+    'Do not split an atomic D0 item solely to use a lower effort',
+    'Do not route an obvious D2 or D3 item through a lower-class role',
     'fork_turns\s*=\s*"none"',
     'packet must explicitly tell the child not to delegate',
     '<!-- END CODEX TASK-AWARE AGENT -->'
 )
 
 $expectedAgents = [ordered]@{
-    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-5.6-luna'; Effort = 'low'; Sandbox = 'read-only' }
-    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-5.6-luna'; Effort = 'max'; Sandbox = 'read-only' }
-    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-5.6-terra'; Effort = 'medium'; Sandbox = $null }
-    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-5.6-terra'; Effort = 'max'; Sandbox = $null }
-    'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-5.6-sol'; Effort = 'high'; Sandbox = 'read-only' }
-    'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-5.6-sol'; Effort = 'max'; Sandbox = 'read-only' }
+    'luna-task-medium.toml' = [ordered]@{ Name = 'luna_task_medium'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = 'read-only' }
+    'astra-architect.toml' = [ordered]@{ Name = 'astra_architect'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only' }
+    'astra-architect-max.toml' = [ordered]@{ Name = 'astra_architect_max'; Model = 'gpt-6-astra'; Effort = 'max'; Sandbox = 'read-only' }
+    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-6-astra'; Effort = 'low'; Sandbox = 'read-only' }
+    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only' }
+    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = $null }
+    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = $null }
+    'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only' }
+    'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only' }
 }
 
 foreach ($entry in $expectedAgents.GetEnumerator()) {
@@ -106,11 +121,18 @@ foreach ($entry in $expectedAgents.GetEnumerator()) {
         $patterns += 'success condition'
         $patterns += 'Do not use for material judgment, broad investigation, or state changes'
     }
+    elseif ($entry.Key -eq 'luna-task-medium.toml') {
+        $patterns += 'bounded D1 work with fixed inputs'
+        $patterns += 'modest reconciliation across files or'
+        $patterns += 'objective success condition'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+        $patterns += 'Do not broaden scope or delegate'
+    }
     elseif ($entry.Key -eq 'luna-task-max.toml') {
         $patterns += 'D1 work that remains deterministic, read-only, and objectively'
         $patterns += 'dense cross-checking across heterogeneous inputs'
         $patterns += 'Do not use for material judgment, broad investigation, or state changes'
-        $patterns += 'Use Max reasoning for completeness and cross-checking'
+        $patterns += 'Use High reasoning for completeness and cross-checking'
         $patterns += 'not to broaden the task''s\s+capability boundary'
     }
     elseif ($entry.Key -eq 'terra-worker.toml') {
@@ -122,7 +144,7 @@ foreach ($entry in $expectedAgents.GetEnumerator()) {
         $patterns += 'D2 work that stays within ordinary engineering judgment'
         $patterns += 'many\s+coupled constraints'
         $patterns += 'Do not use for unresolved architectural trade-offs'
-        $patterns += 'Use Max reasoning for coupled constraints, edge cases, and verification'
+        $patterns += 'Use High reasoning for coupled constraints, edge cases, and verification'
         $patterns += 'not to\s+broaden the task''s capability boundary'
     }
     elseif ($entry.Key -eq 'sol-specialist-max.toml') {
@@ -133,6 +155,15 @@ foreach ($entry in $expectedAgents.GetEnumerator()) {
     elseif ($entry.Key -eq 'sol-specialist.toml') {
         $patterns += 'Use as the default for one bounded D3'
         $patterns += 'Prefer sol_specialist_max when uncertainty and consequence are both'
+    }
+    elseif ($entry.Key -in @('astra-architect.toml', 'astra-architect-max.toml')) {
+        $patterns += 'bounded D4 synthesis'
+        $patterns += 'at least two independent D3'
+        $patterns += 'read-only synthesis role; the parent owns orchestration'
+        $patterns += 'NEEDS_INPUT'
+        $patterns += 'Do not repeat completed investigations'
+        $patterns += 'Do not delegate'
+        $patterns += 'Do not modify files or external state'
     }
     Assert-FileContains -Path (Join-Path $agentsPath $entry.Key) -Patterns $patterns
 }

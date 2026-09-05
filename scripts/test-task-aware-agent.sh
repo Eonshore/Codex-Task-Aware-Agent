@@ -94,26 +94,36 @@ assert_file_contains "$agents_md_path" \
     'Task-aware delegation policy' \
     'agent_type[[:space:]]*=[[:space:]]*"luna_task"' \
     'agent_type[[:space:]]*=[[:space:]]*"luna_task_max"' \
+    'agent_type[[:space:]]*=[[:space:]]*"luna_task_medium"' \
+    'agent_type[[:space:]]*=[[:space:]]*"astra_architect"' \
+    'agent_type[[:space:]]*=[[:space:]]*"astra_architect_max"' \
     'agent_type[[:space:]]*=[[:space:]]*"terra_worker"' \
     'agent_type[[:space:]]*=[[:space:]]*"terra_worker_max"' \
     'agent_type[[:space:]]*=[[:space:]]*"sol_specialist"' \
     'agent_type[[:space:]]*=[[:space:]]*"sol_specialist_max"' \
     'Classify capability first, then choose reasoning effort' \
     "Higher effort never expands a role's permissions" \
-    'Lower model prices reduce the' \
-    'threshold for elevated effort' \
-    'Use Max as the single elevated effort for D1-D3' \
-    'Do not add an xhigh middle lane' \
-    'concrete reason the' \
-    'base effort is likely to be materially more error-prone' \
+    'The target parent is GPT-6 Astra' \
+    'Children never delegate' \
+    'D4 synthesis requires findings from at least two independent D3 work items' \
+    'same three-child limit' \
+    'For D1 Medium, state what reconciliation makes Low insufficient' \
+    'Keep verification proportional to the change' \
+    'All nine child roles use gpt-6-astra with low, medium, high, xhigh, or max reasoning' \
+    'D1 Low/Medium/High, D2 Medium/High, D3 High/xhigh, and D4 xhigh/Max' \
+    'D3 uses Astra High by default and Astra xhigh' \
+    'The luna, terra, sol, and _max names no longer specify the model or effort' \
+    'include the concrete reason the standard role' \
+    'explain why Medium is more error-prone' \
+    'for D3, explain why High is insufficient' \
     'bounded read-only investigation or verification' \
     'Inputs, the' \
     'output contract, and the success condition must be explicit' \
     'State-changing implementation' \
     'tool-heavy multi-step work' \
     'requires ordinary judgment' \
-    'Do not split an atomic D0 item solely because Luna is inexpensive' \
-    'Do not route an obvious D2 or D3 item through a cheaper role' \
+    'Do not split an atomic D0 item solely to use a lower effort' \
+    'Do not route an obvious D2 or D3 item through a lower-class role' \
     'fork_turns[[:space:]]*=[[:space:]]*"none"' \
     'packet must explicitly tell the child not to delegate' \
     '<!-- END CODEX TASK-AWARE AGENT -->'
@@ -122,7 +132,7 @@ assert_file_contains "$agents_path/luna-task.toml" \
     '^name[[:space:]]*=[[:space:]]*"luna_task"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"low"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'Use as the default for compact, homogeneous D1' \
@@ -131,17 +141,30 @@ assert_file_contains "$agents_path/luna-task.toml" \
     'success condition' \
     'Do not use for material judgment, broad investigation, or state changes'
 
+assert_file_contains "$agents_path/luna-task-medium.toml" \
+    '^name[[:space:]]*=[[:space:]]*"luna_task_medium"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D1 work with fixed inputs' \
+    'modest reconciliation across files or' \
+    'objective success condition' \
+    'Do not use for material judgment, broad investigation, or state changes' \
+    'Do not broaden scope or delegate'
+
 assert_file_contains "$agents_path/luna-task-max.toml" \
     '^name[[:space:]]*=[[:space:]]*"luna_task_max"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'D1 work that remains deterministic, read-only, and objectively' \
     'dense cross-checking across heterogeneous inputs' \
     'Do not use for material judgment, broad investigation, or state changes' \
-    'Use Max reasoning for completeness and cross-checking' \
+    'Use High reasoning for completeness and cross-checking' \
     "not to broaden the task's" \
     'capability boundary'
 
@@ -154,7 +177,7 @@ assert_file_contains "$agents_path/terra-worker.toml" \
     'multi-step work' \
     'requires ordinary' \
     'judgment while keeping clear success criteria' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$'
 
 assert_file_contains "$agents_path/terra-worker-max.toml" \
@@ -165,17 +188,17 @@ assert_file_contains "$agents_path/terra-worker-max.toml" \
     'many' \
     'coupled constraints' \
     'Do not use for unresolved architectural trade-offs' \
-    'Use Max reasoning for coupled constraints, edge cases, and verification' \
+    'Use High reasoning for coupled constraints, edge cases, and verification' \
     'not to' \
     "broaden the task's capability boundary" \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$'
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$'
 
 assert_file_contains "$agents_path/sol-specialist.toml" \
     '^name[[:space:]]*=[[:space:]]*"sol_specialist"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'Use as the default for one bounded D3' \
@@ -188,9 +211,39 @@ assert_file_contains "$agents_path/sol-specialist-max.toml" \
     'D3 work when both uncertainty and consequence are high' \
     'security-sensitive trade-offs' \
     'reasoning variance' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"xhigh"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$'
+
+assert_file_contains "$agents_path/astra-architect.toml" \
+    '^name[[:space:]]*=[[:space:]]*"astra_architect"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"xhigh"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D4 synthesis' \
+    'at least two independent D3' \
+    'read-only synthesis role; the parent owns orchestration' \
+    'NEEDS_INPUT' \
+    'Do not repeat completed investigations' \
+    'Do not delegate' \
+    'Do not modify files or external state'
+
+assert_file_contains "$agents_path/astra-architect-max.toml" \
+    '^name[[:space:]]*=[[:space:]]*"astra_architect_max"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D4 synthesis' \
+    'at least two independent D3' \
+    'read-only synthesis role; the parent owns orchestration' \
+    'NEEDS_INPUT' \
+    'Do not repeat completed investigations' \
+    'Do not delegate' \
+    'Do not modify files or external state'
 
 assert_file_absent "$agents_path/luna-task-high.toml"
 assert_file_absent "$agents_path/terra-worker-high.toml"

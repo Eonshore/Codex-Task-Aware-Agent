@@ -10,7 +10,8 @@ Install the Codex Task-Aware Agent configuration globally.
 
 Options:
   --codex-home PATH       Target Codex home (default: $CODEX_HOME or ~/.codex)
-  --set-sol-default       Set gpt-5.6-sol with xhigh reasoning as the default
+  --set-astra-default     Set gpt-6-astra with xhigh reasoning as the default
+  --set-sol-default       Retired; use --set-astra-default instead
   --enable-full-access    Set approval_policy=never and danger-full-access
   -h, --help              Show this help
 EOF
@@ -22,7 +23,7 @@ die() {
 }
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
-set_sol_default=false
+set_astra_default=false
 enable_full_access=false
 
 while (($# > 0)); do
@@ -33,7 +34,10 @@ while (($# > 0)); do
             shift 2
             ;;
         --set-sol-default)
-            set_sol_default=true
+            die '--set-sol-default was retired; use --set-astra-default instead'
+            ;;
+        --set-astra-default)
+            set_astra_default=true
             shift
             ;;
         --enable-full-access)
@@ -72,11 +76,14 @@ command -v awk >/dev/null || die 'awk is required'
 
 expected_agent_files=(
     luna-task.toml
+    luna-task-medium.toml
     luna-task-max.toml
     terra-worker.toml
     terra-worker-max.toml
     sol-specialist.toml
     sol-specialist-max.toml
+    astra-architect.toml
+    astra-architect-max.toml
 )
 retired_agent_files=(luna-task-high.toml terra-worker-high.toml)
 for agent_file in "${expected_agent_files[@]}"; do
@@ -315,8 +322,8 @@ remove_toml_section_key "$config_path" agents max_threads
 remove_toml_section_key "$config_path" agents max_depth
 remove_toml_section_key "$config_path" features multi_agent
 
-if [[ "$set_sol_default" == true ]]; then
-    set_top_level_toml_value "$config_path" model '"gpt-5.6-sol"'
+if [[ "$set_astra_default" == true ]]; then
+    set_top_level_toml_value "$config_path" model '"gpt-6-astra"'
     set_top_level_toml_value "$config_path" model_reasoning_effort '"xhigh"'
 fi
 

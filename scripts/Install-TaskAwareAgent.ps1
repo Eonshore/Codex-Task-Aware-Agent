@@ -4,11 +4,16 @@ param(
         if ($env:CODEX_HOME) { $env:CODEX_HOME }
         else { Join-Path $HOME '.codex' }
     ),
+    [switch]$SetAstraDefault,
     [switch]$SetSolDefault,
     [switch]$EnableFullAccess
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($SetSolDefault) {
+    throw '-SetSolDefault was retired; use -SetAstraDefault instead.'
+}
 
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 $AgentsSource = Join-Path $RepositoryRoot 'agents'
@@ -134,11 +139,14 @@ function Set-TopLevelTomlValue {
 
 $expectedAgentFiles = @(
     'luna-task.toml',
+    'luna-task-medium.toml',
     'luna-task-max.toml',
     'terra-worker.toml',
     'terra-worker-max.toml',
     'sol-specialist.toml',
-    'sol-specialist-max.toml'
+    'sol-specialist-max.toml',
+    'astra-architect.toml',
+    'astra-architect-max.toml'
 )
 $retiredAgentFiles = @('luna-task-high.toml', 'terra-worker-high.toml')
 if (-not (Test-Path -LiteralPath $PolicySource -PathType Leaf)) {
@@ -202,8 +210,8 @@ $config = Remove-TomlSectionKeys -Content $config -Section 'features' -Keys @(
     'multi_agent'
 )
 
-if ($SetSolDefault) {
-    $config = Set-TopLevelTomlValue -Content $config -Key 'model' -Value '"gpt-5.6-sol"'
+if ($SetAstraDefault) {
+    $config = Set-TopLevelTomlValue -Content $config -Key 'model' -Value '"gpt-6-astra"'
     $config = Set-TopLevelTomlValue -Content $config -Key 'model_reasoning_effort' -Value '"xhigh"'
 }
 

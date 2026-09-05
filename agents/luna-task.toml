@@ -3,11 +3,12 @@ description = """
 Use as the default for compact, homogeneous D1 extraction, classification,
 format conversion, repetitive checks, and bounded read-only investigation or
 validation with fixed inputs, an explicit output contract, and an explicit
-success condition. Prefer luna_task_max when dense cross-checking, coverage,
-or numerous edge cases make Low materially more error-prone.
+success condition. Use luna_task_medium for modest reconciliation across files
+or formats; prefer luna_task_max for dense cross-checking, coverage-sensitive
+validation, or numerous edge cases.
 Do not use for material judgment, broad investigation, or state changes.
 """
-model = "gpt-5.6-luna"
+model = "gpt-6-astra"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 

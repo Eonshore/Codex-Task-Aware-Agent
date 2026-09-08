@@ -5,16 +5,24 @@ param(
         else { Join-Path $HOME '.codex' }
     ),
     [switch]$SetSolDefault,
+    [switch]$SetAstraDefault,
     [switch]$EnableFullAccess
 )
 
 $ErrorActionPreference = 'Stop'
 
+if ($SetSolDefault -and $SetAstraDefault) {
+    throw '-SetSolDefault and -SetAstraDefault cannot be used together.'
+}
+
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 $AgentsSource = Join-Path $RepositoryRoot 'agents'
+$RulesSource = Join-Path $RepositoryRoot 'rules/full-admin.rules'
 $PolicySource = Join-Path $RepositoryRoot 'config/AGENTS.task-aware.md'
 $ConfigPath = Join-Path $CodexHome 'config.toml'
 $AgentsPath = Join-Path $CodexHome 'agents'
+$RulesPath = Join-Path $CodexHome 'rules'
+$FullAdminRulePath = Join-Path $RulesPath 'task-aware-full-admin.rules'
 $AgentsMdPath = Join-Path $CodexHome 'AGENTS.md'
 $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $BackupPath = Join-Path $CodexHome "task-aware-backups/$Timestamp"
@@ -138,11 +146,15 @@ $expectedAgentFiles = @(
     'terra-worker.toml',
     'terra-worker-max.toml',
     'sol-specialist.toml',
-    'sol-specialist-max.toml'
+    'sol-specialist-max.toml',
+    'sol-admin-max.toml'
 )
 $retiredAgentFiles = @('luna-task-high.toml', 'terra-worker-high.toml')
 if (-not (Test-Path -LiteralPath $PolicySource -PathType Leaf)) {
     throw "Missing policy source: $PolicySource"
+}
+if (-not (Test-Path -LiteralPath $RulesSource -PathType Leaf)) {
+    throw "Missing full-admin rule source: $RulesSource"
 }
 foreach ($agentFile in $expectedAgentFiles) {
     $agentSourcePath = Join-Path $AgentsSource $agentFile
@@ -162,9 +174,11 @@ if (Test-Path -LiteralPath $AgentsMdPath) {
     $existingAgentsMd = Get-Content -Raw -LiteralPath $AgentsMdPath
     $beginMarker = '<!-- BEGIN CODEX TASK-AWARE AGENT -->'
     $endMarker = '<!-- END CODEX TASK-AWARE AGENT -->'
-    $beginCount = [regex]::Matches($existingAgentsMd, [regex]::Escape($beginMarker)).Count
-    $endCount = [regex]::Matches($existingAgentsMd, [regex]::Escape($endMarker)).Count
-    $completeBlock = "(?s)" + [regex]::Escape($beginMarker) + ".*?" + [regex]::Escape($endMarker)
+    $beginPattern = '(?m)^' + [regex]::Escape($beginMarker) + '\r?$'
+    $endPattern = '(?m)^' + [regex]::Escape($endMarker) + '\r?$'
+    $beginCount = [regex]::Matches($existingAgentsMd, $beginPattern).Count
+    $endCount = [regex]::Matches($existingAgentsMd, $endPattern).Count
+    $completeBlock = '(?ms)^' + [regex]::Escape($beginMarker) + '\r?$.*?^' + [regex]::Escape($endMarker) + '\r?$'
     if ($beginCount -ne $endCount -or $beginCount -gt 1 -or ($beginCount -eq 1 -and $existingAgentsMd -notmatch $completeBlock)) {
         throw 'AGENTS.md contains malformed or duplicate Task-Aware Agent markers. Repair the marker block before retrying.'
     }
@@ -174,10 +188,11 @@ if (-not $PSCmdlet.ShouldProcess($CodexHome, 'Install Codex Task-Aware Agent con
     return
 }
 
-New-Item -ItemType Directory -Force -Path $CodexHome, $AgentsPath, $BackupPath | Out-Null
+New-Item -ItemType Directory -Force -Path $CodexHome, $AgentsPath, $RulesPath, $BackupPath | Out-Null
 
 Backup-IfPresent -Path $ConfigPath
 Backup-IfPresent -Path $AgentsMdPath
+Backup-IfPresent -Path $FullAdminRulePath
 foreach ($agentFile in $expectedAgentFiles) {
     Backup-IfPresent -Path (Join-Path $AgentsPath $agentFile)
 }
@@ -206,6 +221,10 @@ if ($SetSolDefault) {
     $config = Set-TopLevelTomlValue -Content $config -Key 'model' -Value '"gpt-5.6-sol"'
     $config = Set-TopLevelTomlValue -Content $config -Key 'model_reasoning_effort' -Value '"xhigh"'
 }
+elseif ($SetAstraDefault) {
+    $config = Set-TopLevelTomlValue -Content $config -Key 'model' -Value '"gpt-6-astra"'
+    $config = Set-TopLevelTomlValue -Content $config -Key 'model_reasoning_effort' -Value '"xhigh"'
+}
 
 if ($EnableFullAccess) {
     $config = Set-TopLevelTomlValue -Content $config -Key 'approval_policy' -Value '"never"'
@@ -222,18 +241,23 @@ else { '' }
 
 $begin = '<!-- BEGIN CODEX TASK-AWARE AGENT -->'
 $end = '<!-- END CODEX TASK-AWARE AGENT -->'
-$existingBlock = "(?s)" + [regex]::Escape($begin) + ".*?" + [regex]::Escape($end)
+$existingBlock = '(?ms)^' + [regex]::Escape($begin) + '\r?$.*?^' + [regex]::Escape($end) + '\r?$(?:\r?\n)?'
 if ([regex]::IsMatch($agentsMd, $existingBlock)) {
-    $agentsMd = [regex]::Replace($agentsMd, $existingBlock, $policy.Trim())
+    $agentsMd = [regex]::Replace($agentsMd, $existingBlock, $policy)
 }
 else {
-    $agentsMd = $agentsMd.TrimEnd() + "`n`n" + $policy.Trim() + "`n"
+    $agentsMd = $agentsMd.TrimEnd() + "`n`n" + $policy
 }
-Set-Content -LiteralPath $AgentsMdPath -Value $agentsMd.TrimStart() -Encoding utf8
+[IO.File]::WriteAllText(
+    $AgentsMdPath,
+    $agentsMd.TrimStart(),
+    [Text.UTF8Encoding]::new($false)
+)
 
 foreach ($agentFile in $expectedAgentFiles) {
     Copy-Item -LiteralPath (Join-Path $AgentsSource $agentFile) -Destination $AgentsPath -Force
 }
+Copy-Item -LiteralPath $RulesSource -Destination $FullAdminRulePath -Force
 foreach ($agentFile in $retiredAgentFiles) {
     $retiredPath = Join-Path $AgentsPath $agentFile
     if (Test-Path -LiteralPath $retiredPath -PathType Leaf) {

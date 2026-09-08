@@ -10,7 +10,7 @@ Validate an installed Codex Task-Aware Agent configuration.
 
 Options:
   --codex-home PATH  Target Codex home (default: $CODEX_HOME or ~/.codex)
-  --skip-runtime     Skip the codex doctor runtime check
+  --skip-runtime     Skip the codex execpolicy and doctor checks
   --config-only-runtime
                       Require strict config loading but ignore unrelated doctor failures
   -h, --help         Show this help
@@ -24,10 +24,7 @@ config_only_runtime=false
 while (($# > 0)); do
     case "$1" in
         --codex-home)
-            if (($# < 2)); then
-                printf 'Error: --codex-home requires a path\n' >&2
-                exit 1
-            fi
+            (($# >= 2)) || { printf '%s\n' 'Error: --codex-home requires a path' >&2; exit 1; }
             codex_home=$2
             shift 2
             ;;
@@ -51,146 +48,363 @@ while (($# > 0)); do
 done
 
 failures=0
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+repository_root=$(cd -- "$script_dir/.." && pwd -P)
+source_policy_path="$repository_root/config/AGENTS.task-aware.md"
+agents_source="$repository_root/agents"
+rules_source="$repository_root/rules/full-admin.rules"
+config_path="$codex_home/config.toml"
+agents_md_path="$codex_home/AGENTS.md"
+agents_path="$codex_home/agents"
+full_admin_rule_path="$codex_home/rules/task-aware-full-admin.rules"
+
+record_failure() {
+    printf '%s\n' "$*" >&2
+    failures=$((failures + 1))
+}
 
 assert_file_contains() {
     local path=$1
     shift
 
     if [[ ! -f "$path" ]]; then
-        printf 'Missing file: %s\n' "$path" >&2
-        failures=$((failures + 1))
+        record_failure "Missing file: $path"
         return
     fi
 
     local pattern
     for pattern in "$@"; do
         if ! grep -Eq -- "$pattern" "$path"; then
-            printf "Missing pattern '%s' in %s\n" "$pattern" "$path" >&2
-            failures=$((failures + 1))
+            record_failure "Missing pattern '$pattern' in $path"
         fi
     done
 }
 
 assert_file_absent() {
     local path=$1
-
     if [[ -e "$path" ]]; then
-        printf 'Unexpected retired file: %s\n' "$path" >&2
-        failures=$((failures + 1))
+        record_failure "Unexpected retired file: $path"
     fi
 }
 
-config_path="$codex_home/config.toml"
-agents_md_path="$codex_home/AGENTS.md"
-agents_path="$codex_home/agents"
+assert_file_byte_parity() {
+    local source_path=$1
+    local installed_path=$2
+    local label=$3
+
+    if [[ ! -f "$source_path" ]]; then
+        record_failure "Missing $label source: $source_path"
+    elif [[ ! -f "$installed_path" ]]; then
+        record_failure "Missing installed $label: $installed_path"
+    elif ! cmp -s -- "$source_path" "$installed_path"; then
+        record_failure "Installed $label does not match source bytes: $label"
+    fi
+}
+
+count_exact_marker() {
+    local path=$1
+    local marker=$2
+
+    LC_ALL=C awk -v marker="$marker" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == marker) {
+                count += 1
+            }
+        }
+        END { print count + 0 }
+    ' "$path"
+}
+
+has_one_ordered_marker_pair() {
+    local path=$1
+    local begin_marker='<!-- BEGIN CODEX TASK-AWARE AGENT -->'
+    local end_marker='<!-- END CODEX TASK-AWARE AGENT -->'
+
+    LC_ALL=C awk -v begin_marker="$begin_marker" -v end_marker="$end_marker" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == begin_marker) {
+                begin_count += 1
+                if (end_count > 0 || begin_count != 1) invalid = 1
+            } else if (line == end_marker) {
+                end_count += 1
+                if (begin_count != 1 || end_count != 1) invalid = 1
+            }
+        }
+        END { exit !(begin_count == 1 && end_count == 1 && !invalid) }
+    ' "$path"
+}
+
+extract_managed_policy_block() {
+    local path=$1
+    local begin_marker='<!-- BEGIN CODEX TASK-AWARE AGENT -->'
+    local end_marker='<!-- END CODEX TASK-AWARE AGENT -->'
+
+    LC_ALL=C awk -v begin_marker="$begin_marker" -v end_marker="$end_marker" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == begin_marker) {
+                begin_count += 1
+                if (end_count > 0 || begin_count != 1) invalid = 1
+                if (begin_count == 1 && end_count == 0) emitting = 1
+            }
+            if (emitting) print $0
+            if (line == end_marker) {
+                end_count += 1
+                if (begin_count != 1 || !emitting || end_count != 1) invalid = 1
+                if (emitting) {
+                    emitting = 0
+                    completed = 1
+                }
+            }
+        }
+        END { exit !(begin_count == 1 && end_count == 1 && completed && !invalid) }
+    ' "$path"
+}
+
+assert_managed_policy_parity() {
+    local source_path=$1
+    local installed_path=$2
+    local begin_marker='<!-- BEGIN CODEX TASK-AWARE AGENT -->'
+    local end_marker='<!-- END CODEX TASK-AWARE AGENT -->'
+    local path begin_count end_count valid=true
+
+    for path in "$source_path" "$installed_path"; do
+        if [[ ! -f "$path" ]]; then
+            record_failure "Missing managed policy file: $path"
+            valid=false
+            continue
+        fi
+        begin_count=$(count_exact_marker "$path" "$begin_marker")
+        end_count=$(count_exact_marker "$path" "$end_marker")
+        if [[ "$begin_count" != 1 || "$end_count" != 1 ]]; then
+            record_failure "Expected exactly one managed marker pair in $path; found begin=$begin_count end=$end_count."
+            valid=false
+        fi
+        if ! has_one_ordered_marker_pair "$path"; then
+            record_failure "Managed markers are not one ordered begin/end pair in $path."
+            valid=false
+        fi
+    done
+
+    if [[ "$valid" == true ]] && ! cmp -s -- "$source_path" <(extract_managed_policy_block "$installed_path"); then
+        record_failure 'Managed Task-Aware policy source/live byte parity failed.'
+    fi
+}
+
+managed_block_matches_patterns() {
+    local block=$1
+    shift
+
+    local pattern
+    for pattern in "$@"; do
+        if ! grep -Eq -- "$pattern" <<< "$block"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+managed_block_has_no_patterns() {
+    local block=$1
+    shift
+
+    local pattern
+    for pattern in "$@"; do
+        if grep -Eq -- "$pattern" <<< "$block"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+assert_managed_policy_patterns() {
+    local path=$1
+    shift
+    local block
+
+    if [[ ! -f "$path" ]]; then
+        record_failure "Missing managed policy file: $path"
+        return
+    fi
+    if ! block=$(extract_managed_policy_block "$path"); then
+        record_failure "Could not extract one ordered managed marker pair from $path."
+        return
+    fi
+
+    local pattern
+    for pattern in "$@"; do
+        if ! grep -Eq -- "$pattern" <<< "$block"; then
+            record_failure "Missing managed pattern '$pattern' in $path"
+        fi
+    done
+}
+
+assert_managed_policy_excludes() {
+    local path=$1
+    shift
+    local block
+
+    if [[ ! -f "$path" ]]; then
+        record_failure "Missing managed policy file: $path"
+        return
+    fi
+    if ! block=$(extract_managed_policy_block "$path"); then
+        record_failure "Could not extract one ordered managed marker pair from $path."
+        return
+    fi
+
+    local pattern
+    for pattern in "$@"; do
+        if grep -Eq -- "$pattern" <<< "$block"; then
+            record_failure "Forbidden managed pattern '$pattern' found in $path"
+        fi
+    done
+}
+
+run_policy_fault_injection() {
+    local source_block without_deadline without_stalled without_classification
+    local without_required without_optional without_stop with_legacy_wait
+
+    if ! source_block=$(extract_managed_policy_block "$source_policy_path"); then
+        record_failure 'Could not extract source policy for fault injection.'
+        return
+    fi
+    if ! managed_block_matches_patterns "$source_block" "${managed_policy_patterns[@]}" ||
+        ! managed_block_has_no_patterns "$source_block" "${forbidden_policy_patterns[@]}"; then
+        record_failure 'Source policy does not satisfy the managed policy contract before fault injection.'
+        return
+    fi
+
+    without_deadline=${source_block//HARD_DEADLINE/DEADLINE_REMOVED}
+    if managed_block_matches_patterns "$without_deadline" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed HARD_DEADLINE clauses.'
+    fi
+    without_stalled=${source_block//STALLED/LIFECYCLE_STOPPED}
+    if managed_block_matches_patterns "$without_stalled" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed STALLED clauses.'
+    fi
+    without_classification=${source_block//Classification alone never authorizes or requires delegation/Classification authorization removed}
+    if managed_block_matches_patterns "$without_classification" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed classification-not-authorization clause.'
+    fi
+    without_required=${source_block//REQUIRED_ACCEPTANCE_CHECKS/REQUIRED_CHECKS_REMOVED}
+    if managed_block_matches_patterns "$without_required" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed REQUIRED_ACCEPTANCE_CHECKS clauses.'
+    fi
+    without_optional=${source_block//OPTIONAL_EVIDENCE/OPTIONAL_REMOVED}
+    if managed_block_matches_patterns "$without_optional" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed OPTIONAL_EVIDENCE clauses.'
+    fi
+    without_stop=${source_block//STOP_CONDITION/STOP_REMOVED}
+    if managed_block_matches_patterns "$without_stop" "${managed_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not detect removed STOP_CONDITION clauses.'
+    fi
+    with_legacy_wait="$source_block"$'\n''a tool-wait timeout is nonterminal: re-wait and do not interrupt'
+    if managed_block_has_no_patterns "$with_legacy_wait" "${forbidden_policy_patterns[@]}"; then
+        record_failure 'Fault injection did not reject the unbounded wait clause.'
+    fi
+}
 
 assert_file_contains "$config_path" \
     '^[[:space:]]*\[agents\][[:space:]]*(#.*)?$' \
     '^enabled[[:space:]]*=[[:space:]]*true[[:space:]]*$' \
     '^max_concurrent_threads_per_session[[:space:]]*=[[:space:]]*3[[:space:]]*$'
 
-assert_file_contains "$agents_md_path" \
-    '<!-- BEGIN CODEX TASK-AWARE AGENT -->' \
-    'Task-aware delegation policy' \
-    'agent_type[[:space:]]*=[[:space:]]*"luna_task"' \
-    'agent_type[[:space:]]*=[[:space:]]*"luna_task_max"' \
-    'agent_type[[:space:]]*=[[:space:]]*"terra_worker"' \
-    'agent_type[[:space:]]*=[[:space:]]*"terra_worker_max"' \
-    'agent_type[[:space:]]*=[[:space:]]*"sol_specialist"' \
-    'agent_type[[:space:]]*=[[:space:]]*"sol_specialist_max"' \
-    'Classify capability first, then choose reasoning effort' \
-    "Higher effort never expands a role's permissions" \
-    'Lower model prices reduce the' \
-    'threshold for elevated effort' \
-    'Use Max as the single elevated effort for D1-D3' \
-    'Do not add an xhigh middle lane' \
-    'concrete reason the' \
-    'base effort is likely to be materially more error-prone' \
-    'bounded read-only investigation or verification' \
-    'Inputs, the' \
-    'output contract, and the success condition must be explicit' \
-    'State-changing implementation' \
-    'tool-heavy multi-step work' \
-    'requires ordinary judgment' \
-    'Do not split an atomic D0 item solely because Luna is inexpensive' \
-    'Do not route an obvious D2 or D3 item through a cheaper role' \
-    'fork_turns[[:space:]]*=[[:space:]]*"none"' \
-    'packet must explicitly tell the child not to delegate' \
-    '<!-- END CODEX TASK-AWARE AGENT -->'
+assert_managed_policy_parity "$source_policy_path" "$agents_md_path"
 
-assert_file_contains "$agents_path/luna-task.toml" \
-    '^name[[:space:]]*=[[:space:]]*"luna_task"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"low"[[:space:]]*$' \
-    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
-    'Use as the default for compact, homogeneous D1' \
-    'bounded read-only investigation or' \
-    'fixed inputs, an explicit output contract' \
-    'success condition' \
-    'Do not use for material judgment, broad investigation, or state changes'
+# Keep always-loaded guidance compact; do not cap the user's unmanaged text.
+if [[ -f "$source_policy_path" ]] && (( $(wc -c < "$source_policy_path") > 10240 )); then
+    record_failure 'Managed policy exceeds the 10 KiB maintenance budget; consolidate existing rules before adding more.'
+fi
 
-assert_file_contains "$agents_path/luna-task-max.toml" \
-    '^name[[:space:]]*=[[:space:]]*"luna_task_max"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-luna"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
-    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
-    'D1 work that remains deterministic, read-only, and objectively' \
-    'dense cross-checking across heterogeneous inputs' \
-    'Do not use for material judgment, broad investigation, or state changes' \
-    'Use Max reasoning for completeness and cross-checking' \
-    "not to broaden the task's" \
-    'capability boundary'
+managed_policy_patterns=(
+    'Managed source: config/AGENTS\.task-aware\.md'
+    'Task-aware delegation policy v3\.1'
+    'Fix the request-mode authority and mutation boundary'
+    'Delegation never expands the authority granted to the parent'
+    'gpt-6-astra'
+    '### Decision order'
+    'D0 always remains with the parent and never spawns'
+    'Only after an affirmative spawn decision, choose role and effort'
+    'Classification alone never authorizes or requires delegation'
+    'any delegation gate fails, the parent retains ownership and executes directly'
+    'Reasoning effort alone never expands a role'\''s permissions'
+    'Administrator privilege gate'
+    'ADMIN_AUTHORIZED: yes'
+    'Never auto-promote an escalation'
+    'REQUIRED_ACCEPTANCE_CHECKS'
+    'OPTIONAL_EVIDENCE'
+    'STOP_CONDITION'
+    'EXPANSION_TRIGGER'
+    'NO_PROGRESS_LIMIT'
+    'HARD_DEADLINE'
+    'SAFE_CANCELLATION'
+    'Max roles'
+    'STALLED'
+    'Only a terminal child return may be validated and integrated'
+)
+forbidden_policy_patterns=(
+    'tool-wait timeout is nonterminal: re-wait and do not interrupt'
+    'After required checks pass, continue collecting any additional evidence available'
+    'D1 default: call `spawn_agent`'
+)
 
-assert_file_contains "$agents_path/terra-worker.toml" \
-    '^name[[:space:]]*=[[:space:]]*"terra_worker"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    'Use as the default for bounded D2 state-changing implementation' \
-    'tool-heavy' \
-    'multi-step work' \
-    'requires ordinary' \
-    'judgment while keeping clear success criteria' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$'
+assert_managed_policy_patterns "$source_policy_path" "${managed_policy_patterns[@]}"
+assert_managed_policy_patterns "$agents_md_path" "${managed_policy_patterns[@]}"
+assert_managed_policy_excludes "$source_policy_path" "${forbidden_policy_patterns[@]}"
+assert_managed_policy_excludes "$agents_md_path" "${forbidden_policy_patterns[@]}"
+run_policy_fault_injection
 
-assert_file_contains "$agents_path/terra-worker-max.toml" \
-    '^name[[:space:]]*=[[:space:]]*"terra_worker_max"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    'D2 work that stays within ordinary engineering judgment' \
-    'many' \
-    'coupled constraints' \
-    'Do not use for unresolved architectural trade-offs' \
-    'Use Max reasoning for coupled constraints, edge cases, and verification' \
-    'not to' \
-    "broaden the task's capability boundary" \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-terra"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$'
+expected_agent_specs=(
+    'luna-task.toml|luna_task|gpt-5.6-luna|low|read-only|never'
+    'luna-task-max.toml|luna_task_max|gpt-5.6-luna|max|read-only|never'
+    'terra-worker.toml|terra_worker|gpt-5.6-terra|medium|workspace-write|never'
+    'terra-worker-max.toml|terra_worker_max|gpt-5.6-terra|max|workspace-write|never'
+    'sol-specialist.toml|sol_specialist|gpt-5.6-sol|high|read-only|never'
+    'sol-specialist-max.toml|sol_specialist_max|gpt-5.6-sol|max|read-only|never'
+    'sol-admin-max.toml|sol_admin_max|gpt-5.6-sol|max|danger-full-access|on-request'
+)
 
-assert_file_contains "$agents_path/sol-specialist.toml" \
-    '^name[[:space:]]*=[[:space:]]*"sol_specialist"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
-    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
-    'Use as the default for one bounded D3' \
-    'Prefer sol_specialist_max when uncertainty and consequence are both'
+for spec in "${expected_agent_specs[@]}"; do
+    IFS='|' read -r agent_file agent_name agent_model agent_effort agent_sandbox agent_approval <<< "$spec"
+    installed_agent_path="$agents_path/$agent_file"
+    source_agent_path="$agents_source/$agent_file"
+    assert_file_contains "$installed_agent_path" \
+        "^name[[:space:]]*=[[:space:]]*\"$agent_name\"[[:space:]]*$" \
+        '^description[[:space:]]*=[[:space:]]*"""' \
+        '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+        "^model[[:space:]]*=[[:space:]]*\"$agent_model\"[[:space:]]*$" \
+        "^model_reasoning_effort[[:space:]]*=[[:space:]]*\"$agent_effort\"[[:space:]]*$" \
+        "^sandbox_mode[[:space:]]*=[[:space:]]*\"$agent_sandbox\"[[:space:]]*$" \
+        "^approval_policy[[:space:]]*=[[:space:]]*\"$agent_approval\"[[:space:]]*$"
+    assert_file_byte_parity "$source_agent_path" "$installed_agent_path" "agent $agent_file"
+done
 
-assert_file_contains "$agents_path/sol-specialist-max.toml" \
-    '^name[[:space:]]*=[[:space:]]*"sol_specialist_max"[[:space:]]*$' \
-    '^description[[:space:]]*=[[:space:]]*"""' \
-    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    'D3 work when both uncertainty and consequence are high' \
-    'security-sensitive trade-offs' \
-    'reasoning variance' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-5\.6-sol"[[:space:]]*$' \
-    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
-    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$'
+for agent_file in luna-task.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml sol-specialist.toml sol-specialist-max.toml; do
+    assert_file_contains "$agents_path/$agent_file" 'Never invoke or request sudo'
+done
+assert_file_contains "$agents_path/sol-admin-max.toml" \
+    'ADMIN_AUTHORIZED: yes' \
+    'Before every command that uses sudo' \
+    'never use sudo -S' \
+    'This role definition alone is not root or an administrator token'
+
+assert_file_contains "$full_admin_rule_path" \
+    'decision[[:space:]]*=[[:space:]]*"prompt"' \
+    '"sudo"' \
+    '"doas"' \
+    '"pkexec"' \
+    '"su"' \
+    '"runas"' \
+    '"gsudo"' \
+    '"Start-Process"' \
+    'explicit sol_admin_max full-admin gate'
+assert_file_byte_parity "$rules_source" "$full_admin_rule_path" 'full-admin rule'
 
 assert_file_absent "$agents_path/luna-task-high.toml"
 assert_file_absent "$agents_path/terra-worker-high.toml"
@@ -202,12 +416,23 @@ fi
 
 if [[ "$skip_runtime" == false ]]; then
     if command -v codex >/dev/null 2>&1; then
+        set +e
+        execpolicy_output=$(CODEX_HOME="$codex_home" codex execpolicy check --pretty --rules "$full_admin_rule_path" -- sudo -n true 2>&1)
+        execpolicy_exit=$?
+        set -e
+        if ((execpolicy_exit != 0)) || ! grep -Eq '"decision"[[:space:]]*:[[:space:]]*"prompt"' <<< "$execpolicy_output"; then
+            printf '%s\n' "$execpolicy_output" >&2
+            printf 'Full-admin execpolicy did not return prompt for harmless sudo text (exit %d).\n' "$execpolicy_exit" >&2
+            exit 1
+        fi
+        printf 'Full-admin execpolicy prompt passed for CODEX_HOME=%s.\n' "$codex_home"
+
         if [[ "$config_only_runtime" == true ]]; then
             set +e
             doctor_output=$(CODEX_HOME="$codex_home" codex --strict-config doctor --json --no-color 2>&1)
             doctor_exit=$?
             set -e
-            config_status=$(printf '%s\n' "$doctor_output" | awk '
+            config_status=$(awk '
                 /"config.load"[[:space:]]*:/ { in_config = 1 }
                 in_config && /"status"[[:space:]]*:/ {
                     status = $0
@@ -216,7 +441,7 @@ if [[ "$skip_runtime" == false ]]; then
                     print status
                     exit
                 }
-            ')
+            ' <<< "$doctor_output")
             if [[ "$config_status" != ok ]]; then
                 printf '%s\n' "$doctor_output" >&2
                 printf 'Codex strict config load failed with doctor exit %d for CODEX_HOME=%s.\n' "$doctor_exit" "$codex_home" >&2

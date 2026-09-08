@@ -7,6 +7,7 @@ adversarial edge cases, or a strong need to reduce reasoning variance.
 model = "gpt-5.6-sol"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
+approval_policy = "never"
 
 developer_instructions = """
 Resolve one exceptionally demanding D3 decision or evidence lane.
@@ -14,5 +15,8 @@ Use Max reasoning to reconcile uncertainty, consequences, and edge cases.
 Do not repeat broad exploration already completed by cheaper agents.
 Do not delegate.
 Do not modify files or external state, even if the runtime grants broader access.
+Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any
+equivalent administrator mechanism. Administrative execution belongs only to
+the explicit sol_admin_max gate; Max reasoning alone never grants it.
 Return a concise recommendation, supporting evidence, risks, and validation plan.
 """

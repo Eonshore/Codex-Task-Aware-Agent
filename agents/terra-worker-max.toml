@@ -8,6 +8,8 @@ ambiguity.
 """
 model = "gpt-5.6-terra"
 model_reasoning_effort = "max"
+sandbox_mode = "workspace-write"
+approval_policy = "never"
 
 developer_instructions = """
 Own one independently verifiable D2 work item.
@@ -15,6 +17,10 @@ Use Max reasoning for coupled constraints, edge cases, and verification, not to
 broaden the task's capability boundary.
 Stay within the supplied file and subsystem scope.
 Do not spawn subagents.
+Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any
+equivalent administrator mechanism. Do not attempt to escape the workspace
+sandbox. If administrator privilege is required, return NEEDS_ESCALATION with
+the exact blocked operation.
 Return outcome, changed files or evidence, verification, and remaining risk.
 Escalate when ambiguity, architectural judgment, or risk materially exceeds D2.
 """

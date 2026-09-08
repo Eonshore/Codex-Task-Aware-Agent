@@ -1,0 +1,84 @@
+# Route direct administrator-elevation entry points through Codex approval.
+# Roles with approval_policy="never" fail closed. Only sol_admin_max uses
+# approval_policy="on-request", and its developer instructions require explicit
+# user authorization before it can request this prompt.
+
+prefix_rule(
+    pattern = [[
+        "sudo",
+        "/usr/bin/sudo",
+        "/bin/sudo",
+        "doas",
+        "/usr/bin/doas",
+        "/bin/doas",
+        "pkexec",
+        "/usr/bin/pkexec",
+        "/bin/pkexec",
+        "su",
+        "/usr/bin/su",
+        "/bin/su",
+    ]],
+    decision = "prompt",
+    justification = "Administrator elevation requires the explicit sol_admin_max full-admin gate and user approval.",
+    match = [
+        "sudo -n true",
+        "/usr/bin/sudo apt update",
+        "doas id",
+        "pkexec sh",
+        "su - root",
+    ],
+    not_match = [
+        "apt update",
+        "echo sudo",
+    ],
+)
+
+prefix_rule(
+    pattern = [[
+        "runas",
+        "runas.exe",
+        "gsudo",
+        "gsudo.exe",
+        "elevate",
+        "elevate.exe",
+    ]],
+    decision = "prompt",
+    justification = "Windows administrator elevation requires the explicit sol_admin_max full-admin gate and user approval.",
+    match = [
+        "runas /user:Administrator cmd",
+        "runas.exe /trustlevel:0x20000 cmd",
+        "gsudo powershell",
+    ],
+    not_match = [
+        "cmd /c echo runas",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        ["powershell", "powershell.exe", "pwsh", "pwsh.exe"],
+        ["-Command", "-c"],
+        ["Start-Process", "start-process"],
+    ],
+    decision = "prompt",
+    justification = "PowerShell RunAs requests require the explicit sol_admin_max full-admin gate and user approval.",
+    match = [
+        "pwsh -Command Start-Process powershell -Verb RunAs",
+        "powershell.exe -c Start-Process cmd -Verb RunAs",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        ["powershell", "powershell.exe", "pwsh", "pwsh.exe"],
+        ["-NoProfile", "-NoLogo"],
+        ["-Command", "-c"],
+        ["Start-Process", "start-process"],
+    ],
+    decision = "prompt",
+    justification = "PowerShell RunAs requests require the explicit sol_admin_max full-admin gate and user approval.",
+    match = [
+        "pwsh -NoProfile -Command Start-Process powershell -Verb RunAs",
+        "powershell.exe -NoLogo -c Start-Process cmd -Verb RunAs",
+    ],
+)

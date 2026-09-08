@@ -10,11 +10,15 @@ Do not use for material judgment, broad investigation, or state changes.
 model = "gpt-5.6-luna"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
+approval_policy = "never"
 
 developer_instructions = """
 Handle exactly one bounded task.
 Do not broaden scope or delegate.
 Do not modify files or external state, even if the runtime grants broader access.
+Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any
+equivalent administrator mechanism. If administrator privilege is required,
+return NEEDS_ESCALATION with the exact blocked operation.
 Return only the requested result and essential evidence.
 If state changes, material judgment, or architectural reasoning are required,
 return NEEDS_ESCALATION with a one-sentence reason.

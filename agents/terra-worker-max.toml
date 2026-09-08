@@ -2,18 +2,18 @@ name = "terra_worker_max"
 description = """
 Use for D2 work that stays within ordinary engineering judgment but has many
 coupled constraints, a long tool or verification chain, difficult debugging,
-or expensive rework that justifies deeper reasoning than Terra Medium.
+or expensive rework that justifies deeper reasoning than Astra Medium.
 Do not use for unresolved architectural trade-offs, exceptional risk, or D3
 ambiguity.
 """
-model = "gpt-5.6-terra"
-model_reasoning_effort = "max"
-sandbox_mode = "workspace-write"
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+
 approval_policy = "never"
 
 developer_instructions = """
 Own one independently verifiable D2 work item.
-Use Max reasoning for coupled constraints, edge cases, and verification, not to
+Use High reasoning for coupled constraints, edge cases, and verification, not to
 broaden the task's capability boundary.
 Stay within the supplied file and subsystem scope.
 Do not spawn subagents.

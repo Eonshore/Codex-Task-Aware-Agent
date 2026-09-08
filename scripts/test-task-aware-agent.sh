@@ -328,6 +328,17 @@ managed_policy_patterns=(
     'Fix the request-mode authority and mutation boundary'
     'Delegation never expands the authority granted to the parent'
     'gpt-6-astra'
+    'The target parent is GPT-6 Astra'
+    'All ten child roles use'
+    'Children never delegate'
+    'Classify capability first, then choose reasoning effort'
+    'luna_task_medium'
+    'astra_architect'
+    'astra_architect_max'
+    'D1 Low/Medium/High, D2 Medium/High, D3 High/xhigh, and D4 xhigh/Max'
+    'D4 synthesis requires findings from at least two independent D3 work items'
+    'same three-child limit'
+    'NEEDS_INPUT'
     '### Decision order'
     'D0 always remains with the parent and never spawns'
     'Only after an affirmative spawn decision, choose role and effort'
@@ -344,7 +355,7 @@ managed_policy_patterns=(
     'NO_PROGRESS_LIMIT'
     'HARD_DEADLINE'
     'SAFE_CANCELLATION'
-    'Max roles'
+    'Upper roles'
     'STALLED'
     'Only a terminal child return may be validated and integrated'
 )
@@ -361,13 +372,16 @@ assert_managed_policy_excludes "$agents_md_path" "${forbidden_policy_patterns[@]
 run_policy_fault_injection
 
 expected_agent_specs=(
-    'luna-task.toml|luna_task|gpt-5.6-luna|low|read-only|never'
-    'luna-task-max.toml|luna_task_max|gpt-5.6-luna|max|read-only|never'
-    'terra-worker.toml|terra_worker|gpt-5.6-terra|medium|workspace-write|never'
-    'terra-worker-max.toml|terra_worker_max|gpt-5.6-terra|max|workspace-write|never'
-    'sol-specialist.toml|sol_specialist|gpt-5.6-sol|high|read-only|never'
-    'sol-specialist-max.toml|sol_specialist_max|gpt-5.6-sol|max|read-only|never'
-    'sol-admin-max.toml|sol_admin_max|gpt-5.6-sol|max|danger-full-access|on-request'
+    'luna-task.toml|luna_task|gpt-6-astra|low|read-only|never'
+    'luna-task-medium.toml|luna_task_medium|gpt-6-astra|medium|read-only|never'
+    'luna-task-max.toml|luna_task_max|gpt-6-astra|high|read-only|never'
+    'terra-worker.toml|terra_worker|gpt-6-astra|medium||never'
+    'terra-worker-max.toml|terra_worker_max|gpt-6-astra|high||never'
+    'sol-specialist.toml|sol_specialist|gpt-6-astra|high|read-only|never'
+    'sol-specialist-max.toml|sol_specialist_max|gpt-6-astra|xhigh|read-only|never'
+    'astra-architect.toml|astra_architect|gpt-6-astra|xhigh|read-only|never'
+    'astra-architect-max.toml|astra_architect_max|gpt-6-astra|max|read-only|never'
+    'sol-admin-max.toml|sol_admin_max|gpt-6-astra|max|danger-full-access|on-request'
 )
 
 for spec in "${expected_agent_specs[@]}"; do
@@ -380,14 +394,136 @@ for spec in "${expected_agent_specs[@]}"; do
         '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
         "^model[[:space:]]*=[[:space:]]*\"$agent_model\"[[:space:]]*$" \
         "^model_reasoning_effort[[:space:]]*=[[:space:]]*\"$agent_effort\"[[:space:]]*$" \
-        "^sandbox_mode[[:space:]]*=[[:space:]]*\"$agent_sandbox\"[[:space:]]*$" \
         "^approval_policy[[:space:]]*=[[:space:]]*\"$agent_approval\"[[:space:]]*$"
+    if [[ -n "$agent_sandbox" ]]; then
+        assert_file_contains "$installed_agent_path" "^sandbox_mode[[:space:]]*=[[:space:]]*\"$agent_sandbox\"[[:space:]]*$"
+    elif [[ -f "$installed_agent_path" ]] && grep -Eq '^[[:space:]]*sandbox_mode[[:space:]]*=' "$installed_agent_path"; then
+        record_failure "D2 role must inherit the parent sandbox: $agent_file"
+    fi
     assert_file_byte_parity "$source_agent_path" "$installed_agent_path" "agent $agent_file"
 done
 
-for agent_file in luna-task.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml sol-specialist.toml sol-specialist-max.toml; do
+for agent_file in luna-task.toml luna-task-medium.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml sol-specialist.toml sol-specialist-max.toml astra-architect.toml astra-architect-max.toml; do
     assert_file_contains "$agents_path/$agent_file" 'Never invoke or request sudo'
 done
+# Retain the Astra branch role capability contracts.
+assert_file_contains "$agents_path/luna-task.toml" \
+    '^name[[:space:]]*=[[:space:]]*"luna_task"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"low"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'Use as the default for compact, homogeneous D1' \
+    'bounded read-only investigation or' \
+    'fixed inputs, an explicit output contract' \
+    'success condition' \
+    'Do not use for material judgment, broad investigation, or state changes'
+
+assert_file_contains "$agents_path/luna-task-medium.toml" \
+    '^name[[:space:]]*=[[:space:]]*"luna_task_medium"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D1 work with fixed inputs' \
+    'modest reconciliation across files or' \
+    'objective success condition' \
+    'Do not use for material judgment, broad investigation, or state changes' \
+    'Do not broaden scope or delegate'
+
+assert_file_contains "$agents_path/luna-task-max.toml" \
+    '^name[[:space:]]*=[[:space:]]*"luna_task_max"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'D1 work that remains deterministic, read-only, and objectively' \
+    'dense cross-checking across heterogeneous inputs' \
+    'Do not use for material judgment, broad investigation, or state changes' \
+    'Use High reasoning for completeness and cross-checking' \
+    "not to broaden the task's" \
+    'capability boundary'
+
+assert_file_contains "$agents_path/terra-worker.toml" \
+    '^name[[:space:]]*=[[:space:]]*"terra_worker"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    'Use as the default for bounded D2 state-changing implementation' \
+    'tool-heavy' \
+    'multi-step work' \
+    'requires ordinary' \
+    'judgment while keeping clear success criteria' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$'
+
+assert_file_contains "$agents_path/terra-worker-max.toml" \
+    '^name[[:space:]]*=[[:space:]]*"terra_worker_max"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    'D2 work that stays within ordinary engineering judgment' \
+    'many' \
+    'coupled constraints' \
+    'Do not use for unresolved architectural trade-offs' \
+    'Use High reasoning for coupled constraints, edge cases, and verification' \
+    'not to' \
+    "broaden the task's capability boundary" \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$'
+
+assert_file_contains "$agents_path/sol-specialist.toml" \
+    '^name[[:space:]]*=[[:space:]]*"sol_specialist"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'Use as the default for one bounded D3' \
+    'Prefer sol_specialist_max when uncertainty and consequence are both'
+
+assert_file_contains "$agents_path/sol-specialist-max.toml" \
+    '^name[[:space:]]*=[[:space:]]*"sol_specialist_max"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    'D3 work when both uncertainty and consequence are high' \
+    'security-sensitive trade-offs' \
+    'reasoning variance' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"xhigh"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$'
+
+assert_file_contains "$agents_path/astra-architect.toml" \
+    '^name[[:space:]]*=[[:space:]]*"astra_architect"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"xhigh"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D4 synthesis' \
+    'at least two independent D3' \
+    'read-only synthesis role; the parent owns orchestration' \
+    'NEEDS_INPUT' \
+    'Do not repeat completed investigations' \
+    'Do not delegate' \
+    'Do not modify files or external state'
+
+assert_file_contains "$agents_path/astra-architect-max.toml" \
+    '^name[[:space:]]*=[[:space:]]*"astra_architect_max"[[:space:]]*$' \
+    '^description[[:space:]]*=[[:space:]]*"""' \
+    '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model_reasoning_effort[[:space:]]*=[[:space:]]*"max"[[:space:]]*$' \
+    '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
+    'bounded D4 synthesis' \
+    'at least two independent D3' \
+    'read-only synthesis role; the parent owns orchestration' \
+    'NEEDS_INPUT' \
+    'Do not repeat completed investigations' \
+    'Do not delegate' \
+    'Do not modify files or external state'
+
 assert_file_contains "$agents_path/sol-admin-max.toml" \
     'ADMIN_AUTHORIZED: yes' \
     'Before every command that uses sudo' \

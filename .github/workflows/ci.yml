@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.149.0' }}
+  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.149.1' }}
 
 jobs:
   windows:
@@ -62,6 +62,53 @@ jobs:
           & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $cleanHome
           $backupCount = @(Get-ChildItem -Directory -LiteralPath (Join-Path $cleanHome 'task-aware-backups')).Count
           if ($backupCount -lt 2) { throw 'Repeated installation reused a backup directory.' }
+
+          $standardHome = Join-Path $env:RUNNER_TEMP 'task-aware-standard-defaults'
+          New-Item -ItemType Directory -Force -Path $standardHome | Out-Null
+          @(
+            'model = "parent-model"'
+            'model_reasoning_effort = "medium"'
+            'approval_policy = "on-request"'
+            'sandbox_mode = "workspace-write"'
+          ) | Set-Content -LiteralPath (Join-Path $standardHome 'config.toml') -Encoding utf8
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $standardHome
+          $standard = Get-Content -Raw -LiteralPath (Join-Path $standardHome 'config.toml')
+          foreach ($expected in @(
+            'model = "parent-model"',
+            'model_reasoning_effort = "medium"',
+            'approval_policy = "on-request"',
+            'sandbox_mode = "workspace-write"'
+          )) {
+            $key = $expected.Split('=')[0].Trim()
+            if ([regex]::Matches($standard, "(?m)^\s*" + [regex]::Escape($key) + '\s*=').Count -ne 1 -or
+                $standard -notmatch [regex]::Escape($expected)) {
+              throw "Standard install changed $expected."
+            }
+          }
+
+          $astraHome = Join-Path $env:RUNNER_TEMP 'task-aware-astra-default'
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $astraHome -SetAstraDefault
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $astraHome -SetAstraDefault
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $astraHome -ConfigOnlyRuntime
+          $astra = Get-Content -Raw -LiteralPath (Join-Path $astraHome 'config.toml')
+          foreach ($expected in @('model = "gpt-6-astra"', 'model_reasoning_effort = "xhigh"')) {
+            if ([regex]::Matches($astra, "(?m)^\s*" + [regex]::Escape($expected.Split('=')[0].Trim()) + '\s*=').Count -ne 1 -or
+                $astra -notmatch [regex]::Escape($expected)) {
+              throw "Astra default was not set exactly once: $expected."
+            }
+          }
+
+          $retiredSolHome = Join-Path $env:RUNNER_TEMP 'task-aware-retired-sol'
+          $stopped = $false
+          try {
+            & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $retiredSolHome -SetSolDefault -ErrorAction Stop
+          }
+          catch {
+            $stopped = $_.Exception.Message -like '*was retired*'
+          }
+          if (-not $stopped -or (Test-Path -LiteralPath $retiredSolHome)) {
+            throw 'Retired Sol option did not fail before filesystem mutation.'
+          }
 
           $migrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-migration'
           New-Item -ItemType Directory -Force -Path $migrationHome | Out-Null
@@ -165,27 +212,6 @@ jobs:
             if ($preserved -notmatch [regex]::Escape($line)) {
               throw "Default installation did not preserve: $line"
             }
-          }
-
-          $astraHome = Join-Path $env:RUNNER_TEMP 'task-aware-astra'
-          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $astraHome -SetAstraDefault
-          $astraConfig = Get-Content -Raw -LiteralPath (Join-Path $astraHome 'config.toml')
-          if ($astraConfig -notmatch '(?m)^model = "gpt-6-astra"$') {
-            throw 'Astra parent model was not selected.'
-          }
-          if ($astraConfig -notmatch '(?m)^model_reasoning_effort = "xhigh"$') {
-            throw 'Astra parent reasoning effort was not selected.'
-          }
-          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $astraHome -ConfigOnlyRuntime
-
-          $solHome = Join-Path $env:RUNNER_TEMP 'task-aware-sol'
-          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $solHome -SetSolDefault
-          $solConfig = Get-Content -Raw -LiteralPath (Join-Path $solHome 'config.toml')
-          if ($solConfig -notmatch '(?m)^model = "gpt-5.6-sol"$') {
-            throw 'Legacy Sol parent model selection regressed.'
-          }
-          if ($solConfig -notmatch '(?m)^model_reasoning_effort = "xhigh"$') {
-            throw 'Legacy Sol parent reasoning effort regressed.'
           }
 
           $selectionConflictHome = Join-Path $env:RUNNER_TEMP 'task-aware-selection-conflict'
@@ -345,6 +371,53 @@ jobs:
             exit 1
           fi
 
+          standard_home="$RUNNER_TEMP/task-aware-standard-defaults"
+          mkdir -p -- "$standard_home"
+          cat > "$standard_home/config.toml" <<'EOF'
+          model = "parent-model"
+          model_reasoning_effort = "medium"
+          approval_policy = "on-request"
+          sandbox_mode = "workspace-write"
+          EOF
+          scripts/install-task-aware-agent.sh --codex-home "$standard_home"
+          for expected in \
+            'model = "parent-model"' \
+            'model_reasoning_effort = "medium"' \
+            'approval_policy = "on-request"' \
+            'sandbox_mode = "workspace-write"'; do
+            key=${expected%% =*}
+            if [[ $(grep -Ec "^[[:space:]]*$key[[:space:]]*=" "$standard_home/config.toml") -ne 1 ]] ||
+              ! grep -Fqx "$expected" "$standard_home/config.toml"; then
+              printf 'Standard install changed %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+
+          astra_home="$RUNNER_TEMP/task-aware-astra-default"
+          scripts/install-task-aware-agent.sh --codex-home "$astra_home" --set-astra-default
+          scripts/install-task-aware-agent.sh --codex-home "$astra_home" --set-astra-default
+          scripts/test-task-aware-agent.sh --codex-home "$astra_home" --config-only-runtime
+          for expected in \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "xhigh"'; do
+            key=${expected%% =*}
+            if [[ $(grep -Ec "^[[:space:]]*$key[[:space:]]*=" "$astra_home/config.toml") -ne 1 ]] ||
+              ! grep -Fqx "$expected" "$astra_home/config.toml"; then
+              printf 'Astra default was not set exactly once: %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+
+          retired_sol_home="$RUNNER_TEMP/task-aware-retired-sol"
+          if scripts/install-task-aware-agent.sh --codex-home "$retired_sol_home" --set-sol-default; then
+            printf '%s\n' 'Retired Sol option was not rejected.' >&2
+            exit 1
+          fi
+          if [[ -e "$retired_sol_home" ]]; then
+            printf '%s\n' 'Retired Sol option mutated the target home.' >&2
+            exit 1
+          fi
+
           migration_home="$RUNNER_TEMP/task-aware-migration"
           mkdir -p -- "$migration_home"
           cat > "$migration_home/config.toml" <<'EOF'
@@ -430,31 +503,6 @@ jobs:
               exit 1
             fi
           done
-
-          astra_home="$RUNNER_TEMP/task-aware-astra"
-          scripts/install-task-aware-agent.sh --codex-home "$astra_home" --set-astra-default
-          if ! grep -Fxq 'model = "gpt-6-astra"' "$astra_home/config.toml"; then
-            printf '%s\n' 'Astra parent model was not selected.' >&2
-            exit 1
-          fi
-          if ! grep -Fxq 'model_reasoning_effort = "xhigh"' "$astra_home/config.toml"; then
-            printf '%s\n' 'Astra parent reasoning effort was not selected.' >&2
-            exit 1
-          fi
-          scripts/test-task-aware-agent.sh \
-            --codex-home "$astra_home" \
-            --config-only-runtime
-
-          sol_home="$RUNNER_TEMP/task-aware-sol"
-          scripts/install-task-aware-agent.sh --codex-home "$sol_home" --set-sol-default
-          if ! grep -Fxq 'model = "gpt-5.6-sol"' "$sol_home/config.toml"; then
-            printf '%s\n' 'Legacy Sol parent model selection regressed.' >&2
-            exit 1
-          fi
-          if ! grep -Fxq 'model_reasoning_effort = "xhigh"' "$sol_home/config.toml"; then
-            printf '%s\n' 'Legacy Sol parent reasoning effort regressed.' >&2
-            exit 1
-          fi
 
           selection_conflict_home="$RUNNER_TEMP/task-aware-selection-conflict"
           mkdir -p -- "$selection_conflict_home"

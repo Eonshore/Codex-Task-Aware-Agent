@@ -265,6 +265,17 @@ $managedPolicyPatterns = @(
     'Fix the request-mode authority and mutation boundary',
     'Delegation never expands the authority granted to the parent',
     'gpt-6-astra',
+    'The target parent is GPT-6 Astra',
+    'All ten child roles use',
+    'Children never delegate',
+    'Classify capability first, then choose reasoning effort',
+    'luna_task_medium',
+    'astra_architect',
+    'astra_architect_max',
+    'D1 Low/Medium/High, D2 Medium/High, D3 High/xhigh, and D4 xhigh/Max',
+    'D4 synthesis requires findings from at least two independent D3 work items',
+    'same three-child limit',
+    'NEEDS_INPUT',
     '### Decision order',
     'D0 always remains with the parent and never spawns',
     'Only after an affirmative spawn decision, choose role and effort',
@@ -281,7 +292,7 @@ $managedPolicyPatterns = @(
     'NO_PROGRESS_LIMIT',
     'HARD_DEADLINE',
     'SAFE_CANCELLATION',
-    'Max roles',
+    'Upper roles',
     '(?-i:\bSTALLED\b)',
     'Only a terminal child return may be validated and integrated'
 )
@@ -311,13 +322,16 @@ Assert-ManagedPolicyExcludes -Artifact $livePolicyArtifact -Patterns $forbiddenP
 Invoke-PolicyFaultInjection -SourceArtifact $sourcePolicyArtifact
 
 $expectedAgents = [ordered]@{
-    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-5.6-luna'; Effort = 'low'; Sandbox = 'read-only'; Approval = 'never' }
-    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-5.6-luna'; Effort = 'max'; Sandbox = 'read-only'; Approval = 'never' }
-    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-5.6-terra'; Effort = 'medium'; Sandbox = 'workspace-write'; Approval = 'never' }
-    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-5.6-terra'; Effort = 'max'; Sandbox = 'workspace-write'; Approval = 'never' }
-    'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-5.6-sol'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
-    'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-5.6-sol'; Effort = 'max'; Sandbox = 'read-only'; Approval = 'never' }
-    'sol-admin-max.toml' = [ordered]@{ Name = 'sol_admin_max'; Model = 'gpt-5.6-sol'; Effort = 'max'; Sandbox = 'danger-full-access'; Approval = 'on-request' }
+    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-6-astra'; Effort = 'low'; Sandbox = 'read-only'; Approval = 'never' }
+    'luna-task-medium.toml' = [ordered]@{ Name = 'luna_task_medium'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = 'read-only'; Approval = 'never' }
+    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
+    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = $null; Approval = 'never' }
+    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = $null; Approval = 'never' }
+    'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
+    'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only'; Approval = 'never' }
+    'astra-architect.toml' = [ordered]@{ Name = 'astra_architect'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only'; Approval = 'never' }
+    'astra-architect-max.toml' = [ordered]@{ Name = 'astra_architect_max'; Model = 'gpt-6-astra'; Effort = 'max'; Sandbox = 'read-only'; Approval = 'never' }
+    'sol-admin-max.toml' = [ordered]@{ Name = 'sol_admin_max'; Model = 'gpt-6-astra'; Effort = 'max'; Sandbox = 'danger-full-access'; Approval = 'on-request' }
 }
 
 foreach ($entry in $expectedAgents.GetEnumerator()) {
@@ -336,15 +350,75 @@ foreach ($entry in $expectedAgents.GetEnumerator()) {
         '(?m)^developer_instructions\s*=\s*"""',
         "(?m)^model\s*=\s*""$escapedModel""\s*$",
         "(?m)^model_reasoning_effort\s*=\s*""$escapedEffort""\s*$",
-        "(?m)^sandbox_mode\s*=\s*""$escapedSandbox""\s*$",
         "(?m)^approval_policy\s*=\s*""$escapedApproval""\s*$"
     )
+    if ($null -ne $definition.Sandbox) {
+        $patterns += "(?m)^sandbox_mode\s*=\s*""$escapedSandbox""\s*$"
+    }
+    elseif ((Test-Path -LiteralPath $installedPath) -and
+        (Get-Content -Raw -LiteralPath $installedPath) -match '(?m)^\s*sandbox_mode\s*=') {
+        Add-Failure "D2 role must inherit the parent sandbox: $agentFile"
+    }
+    if ($entry.Key -eq 'luna-task.toml') {
+        $patterns += 'Use as the default for compact, homogeneous D1'
+        $patterns += 'bounded read-only investigation or'
+        $patterns += 'fixed inputs, an explicit output contract'
+        $patterns += 'success condition'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+    }
+    elseif ($entry.Key -eq 'luna-task-medium.toml') {
+        $patterns += 'bounded D1 work with fixed inputs'
+        $patterns += 'modest reconciliation across files or'
+        $patterns += 'objective success condition'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+        $patterns += 'Do not broaden scope or delegate'
+    }
+    elseif ($entry.Key -eq 'luna-task-max.toml') {
+        $patterns += 'D1 work that remains deterministic, read-only, and objectively'
+        $patterns += 'dense cross-checking across heterogeneous inputs'
+        $patterns += 'Do not use for material judgment, broad investigation, or state changes'
+        $patterns += 'Use High reasoning for completeness and cross-checking'
+        $patterns += 'not to broaden the task''s\s+capability boundary'
+    }
+    elseif ($entry.Key -eq 'terra-worker.toml') {
+        $patterns += 'Use as the default for bounded D2 state-changing implementation'
+        $patterns += 'tool-heavy\s+multi-step work'
+        $patterns += 'requires\s+ordinary\s+judgment'
+    }
+    elseif ($entry.Key -eq 'terra-worker-max.toml') {
+        $patterns += 'D2 work that stays within ordinary engineering judgment'
+        $patterns += 'many\s+coupled constraints'
+        $patterns += 'Do not use for unresolved architectural trade-offs'
+        $patterns += 'Use High reasoning for coupled constraints, edge cases, and verification'
+        $patterns += 'not to\s+broaden the task''s capability boundary'
+    }
+    elseif ($entry.Key -eq 'sol-specialist-max.toml') {
+        $patterns += 'D3 work when both uncertainty and consequence are high'
+        $patterns += 'security-sensitive trade-offs'
+        $patterns += 'reasoning variance'
+    }
+    elseif ($entry.Key -eq 'sol-specialist.toml') {
+        $patterns += 'Use as the default for one bounded D3'
+        $patterns += 'Prefer sol_specialist_max when uncertainty and consequence are both'
+    }
+    elseif ($entry.Key -in @('astra-architect.toml', 'astra-architect-max.toml')) {
+        $patterns += 'bounded D4 synthesis'
+        $patterns += 'at least two independent D3'
+        $patterns += 'read-only synthesis role; the parent owns orchestration'
+        $patterns += 'NEEDS_INPUT'
+        $patterns += 'Do not repeat completed investigations'
+        $patterns += 'Do not delegate'
+        $patterns += 'Do not modify files or external state'
+    }
     Assert-FileContains -Path $installedPath -Patterns $patterns
     Assert-FileByteParity -SourcePath $sourcePath -InstalledPath $installedPath -Label "agent $agentFile"
 }
 
 foreach ($agentFile in @(
         'luna-task.toml',
+        'luna-task-medium.toml',
+        'astra-architect.toml',
+        'astra-architect-max.toml',
         'luna-task-max.toml',
         'terra-worker.toml',
         'terra-worker-max.toml',

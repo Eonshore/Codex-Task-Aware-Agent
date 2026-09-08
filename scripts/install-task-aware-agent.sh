@@ -10,8 +10,8 @@ Install the Codex Task-Aware Agent configuration globally.
 
 Options:
   --codex-home PATH       Target Codex home (default: $CODEX_HOME or ~/.codex)
-  --set-sol-default       Set gpt-5.6-sol with xhigh reasoning as the default
   --set-astra-default     Set gpt-6-astra with xhigh reasoning as the default
+  --set-sol-default       Retired; use --set-astra-default instead
   --enable-full-access    Set approval_policy=never and danger-full-access
   -h, --help              Show this help
 EOF
@@ -23,7 +23,6 @@ die() {
 }
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
-set_sol_default=false
 set_astra_default=false
 enable_full_access=false
 
@@ -35,8 +34,7 @@ while (($# > 0)); do
             shift 2
             ;;
         --set-sol-default)
-            set_sol_default=true
-            shift
+            die '--set-sol-default was retired; use --set-astra-default instead'
             ;;
         --set-astra-default)
             set_astra_default=true
@@ -55,10 +53,6 @@ while (($# > 0)); do
             ;;
     esac
 done
-
-if [[ "$set_sol_default" == true && "$set_astra_default" == true ]]; then
-    die '--set-sol-default and --set-astra-default cannot be used together'
-fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repository_root=$(cd -- "$script_dir/.." && pwd -P)
@@ -86,11 +80,14 @@ command -v awk >/dev/null || die 'awk is required'
 
 expected_agent_files=(
     luna-task.toml
+    luna-task-medium.toml
     luna-task-max.toml
     terra-worker.toml
     terra-worker-max.toml
     sol-specialist.toml
     sol-specialist-max.toml
+    astra-architect.toml
+    astra-architect-max.toml
     sol-admin-max.toml
 )
 retired_agent_files=(luna-task-high.toml terra-worker-high.toml)
@@ -340,10 +337,7 @@ remove_toml_section_key "$config_path" agents max_threads
 remove_toml_section_key "$config_path" agents max_depth
 remove_toml_section_key "$config_path" features multi_agent
 
-if [[ "$set_sol_default" == true ]]; then
-    set_top_level_toml_value "$config_path" model '"gpt-5.6-sol"'
-    set_top_level_toml_value "$config_path" model_reasoning_effort '"xhigh"'
-elif [[ "$set_astra_default" == true ]]; then
+if [[ "$set_astra_default" == true ]]; then
     set_top_level_toml_value "$config_path" model '"gpt-6-astra"'
     set_top_level_toml_value "$config_path" model_reasoning_effort '"xhigh"'
 fi

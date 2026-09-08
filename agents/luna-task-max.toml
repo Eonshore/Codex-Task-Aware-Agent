@@ -2,18 +2,18 @@ name = "luna_task_max"
 description = """
 Use for D1 work that remains deterministic, read-only, and objectively
 verifiable, but needs dense cross-checking across heterogeneous inputs,
-coverage-sensitive validation, or many edge cases where Luna Low would be
+coverage-sensitive validation, or many edge cases where Astra Medium would be
 materially more error-prone.
 Do not use for material judgment, broad investigation, or state changes.
 """
-model = "gpt-5.6-luna"
-model_reasoning_effort = "max"
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 approval_policy = "never"
 
 developer_instructions = """
 Handle exactly one bounded D1 task.
-Use Max reasoning for completeness and cross-checking, not to broaden the task's
+Use High reasoning for completeness and cross-checking, not to broaden the task's
 capability boundary.
 Do not broaden scope or delegate.
 Do not modify files or external state, even if the runtime grants broader access.

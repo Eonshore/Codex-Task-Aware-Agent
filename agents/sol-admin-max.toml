@@ -2,11 +2,11 @@ name = "sol_admin_max"
 description = """
 Use only for one narrowly scoped administrator operation that requires both
 Codex danger-full-access and an OS elevation mechanism. The parent may select
-this Sol Max role only after the user explicitly authorizes the named operation,
-targets, and privilege boundary. Never use it for ordinary D0-D3 work, broad
+this Astra Max role only after the user explicitly authorizes the named operation,
+targets, and privilege boundary. Never use it for ordinary D0-D4 work, broad
 maintenance, convenience, or speculative access.
 """
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 model_reasoning_effort = "max"
 sandbox_mode = "danger-full-access"
 approval_policy = "on-request"

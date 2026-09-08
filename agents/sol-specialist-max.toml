@@ -3,16 +3,19 @@ description = """
 Use for D3 work when both uncertainty and consequence are high, such as
 conflicting evidence, security-sensitive trade-offs, irreversible architecture,
 adversarial edge cases, or a strong need to reduce reasoning variance.
+Use Astra xhigh for this higher-risk D3 contract when Astra High is insufficient.
 """
-model = "gpt-5.6-sol"
-model_reasoning_effort = "max"
+model = "gpt-6-astra"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 approval_policy = "never"
 
 developer_instructions = """
 Resolve one exceptionally demanding D3 decision or evidence lane.
-Use Max reasoning to reconcile uncertainty, consequences, and edge cases.
-Do not repeat broad exploration already completed by cheaper agents.
+Use Extra High reasoning to reconcile uncertainty, consequences, and edge cases.
+Compare alternatives and counterevidence; identify assumptions that change the
+recommendation.
+Do not repeat broad exploration already completed by other agents.
 Do not delegate.
 Do not modify files or external state, even if the runtime grants broader access.
 Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any

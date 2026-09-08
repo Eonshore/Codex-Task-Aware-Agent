@@ -4,18 +4,18 @@
 
 - [ ] `main` が最新の `origin/main` と一致し、working tree に意図しない変更がない。
 - [ ] [Codex changelog](https://learn.chatgpt.com/docs/changelog) で最新版を確認し、`.github/workflows/ci.yml` と README の検証基準を更新する。
-- [ ] [Models](https://learn.chatgpt.com/docs/models#gpt-6-astra) で Astra と必要な子モデルの対応条件を確認する。価格の比較を掲載する場合は、公式の現行料金も確認する。
+- [ ] [Codex Models](https://learn.chatgpt.com/docs/models) と [Astra guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra) で、モデル、effort、委譲方針の互換性を確認する。
 - [ ] `CHANGELOG.md` の version、日付、release link を確定する。
 - [ ] `LICENSE`、`SECURITY.md`、`CONTRIBUTING.md` が release archive に含まれる。
 - [ ] GitHub Actions の Windows/Linux job が成功する。
-- [ ] Windows/Linux の Astra 選択オプションが `gpt-6-astra`／`xhigh` を設定し、標準導入が既存の親モデル・推論労力・権限・非管理設定を保持する。
-- [ ] 従来の Sol 選択が動作し、Astra と Sol の同時指定がファイル変更前に拒否される。
-- [ ] 認証済みの新しい Codex task で Astra 親を確認する。D0 の no-spawn、委譲条件を満たす D1/D2 と例外的な D3 について、Luna Low/Max、Terra Medium/Max、Sol High/Max のモデルと推論労力を個別に確認する。
-- [ ] Max枠が能力境界や sandbox を広げず、task packet に昇格理由が含まれることを確認する。
-- [ ] 管理者許可がない依頼では通常役が昇格を試みず、`sol_admin_max` も発行されない。規則の直接入口が `prompt` と評価されることは、昇格コマンドを実行せずに確認する。
-- [ ] Windows/Linux の検証スクリプトでマーカーの一意性と順序、配置されたポリシーと配布元の一致、七役と規則のバイト単位での一致を確認する。
-- [ ] マーカーの重複・順序異常、ポリシー・役割・規則の差異を個別に注入し、各不正状態を検出する。
-- [ ] v3.1 の判断順序、作業指示の有限期限、必須確認と終了条件が、管理ブロック外の記述では代用できないことを確認する。
+- [ ] 認証済みの新しい Codex task で D0 の no-spawn、D1 の Low/Medium/High 条件と D2/D3/D4 の標準・上位条件を実行する。子の実起動を通じて、model がすべて `gpt-6-astra`、effort が D1 の Low/Medium/High、D2 の Medium/High、D3 の High/xhigh、D4 の xhigh/Max になっていることを確認する。
+- [ ] D4 の入力に2件以上の独立した D3 所見が含まれ、D4 も読み取り専用・再委譲禁止・同時に最大3子を守ることを確認する。
+- [ ] 親の Astra xhigh 設定、標準導入での既存親設定の維持、廃止した Sol オプションの案内と変更前の停止を確認する。
+- [ ] 上位枠が能力境界や sandbox を広げず、task packet に昇格理由が含まれることを確認する。
+- [ ] 管理者許可がない場合は通常役が昇格を試みず、`sol_admin_max` も発行されない。規則の直接入口が `prompt` と評価されることを、昇格コマンドを実行せず確認する。
+- [ ] 管理者役も `gpt-6-astra`／`max` とし、専用の承認条件を維持する。
+- [ ] Windows/Linux でマーカーの一意性・順序、ポリシー・十役・規則のバイト一致、CRLF、差異、不正マーカーを確認する。
+- [ ] v3.1 の判断順、期限、必須・任意確認、終了条件が管理ブロック外の記述で代用できず、10 KiB 超過も検出される。
 - [ ] `git diff --check` と秘密情報 scan を通す。
 
 ## 公開

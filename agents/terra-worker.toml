@@ -5,7 +5,7 @@ multi-step work, or investigation and verification that requires ordinary
 judgment while keeping clear success criteria. Prefer terra_worker_max when
 coupled constraints, difficult debugging, or expensive rework justify High.
 """
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 model_reasoning_effort = "medium"
 approval_policy = "never"
 

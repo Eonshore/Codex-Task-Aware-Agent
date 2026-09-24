@@ -8,7 +8,7 @@ OpenAI の公式製品ではなく、Codex の公開仕様に基づくコミュ�
 
 この構成では、親に **GPT-6 Astra** を使い、難易度の判定、タスクの分割、子の選択、結果の統合を担当させます。
 親を切り替える導入オプションは `gpt-6-astra` と `xhigh` を設定します。
-子もすべて Astra とし、D1 は Low・Medium・High、D2 は Medium/High、D3 は High/xhigh、D4 は xhigh/Max を使います。
+子は D1 に **GPT-6 Luna**（Low・Medium・High）、D2 に **GPT-6 Sol**（Medium/High）、D3 に **GPT-6 Astra**（High/xhigh）、D4 に **GPT-6 Astra**（xhigh/Max）を使います。
 
 子のモデルと推論労力を役割ごとに指定することで、親の設定をすべての子が継承することを避けます。
 ただし、子もそれぞれトークンと調整時間を使うため、分割する利点がある作業だけを委譲します。
@@ -26,11 +26,11 @@ Ultra を利用できる環境では、並列に分割できる大きな作業�
 | 難易度 | 対象 | 実行役 | モデルと推論労力 | sandbox |
 | --- | --- | --- | --- | --- |
 | D0 | 単純で明確な1工程 | 親が直接処理 | Astra xhigh（必要に応じて変更） | 親の設定 |
-| D1 標準 Low | 少量・同形式で、固定入力と客観的完了条件がある読み取り専用作業 | `luna_task` | Astra Low | read-only |
-| D1 標準 Medium | 複数ファイルや異なる形式を扱い、客観的な条件に沿った軽い突き合わせが必要な作業 | `luna_task_medium` | Astra Medium | read-only |
-| D1 上位枠 | D1 のまま、異種入力、密な突合、網羅性の確認、多数の境界条件がある作業 | `luna_task_max` | Astra High | read-only |
-| D2 標準 | 状態変更を伴う実装、ツールを使う複数工程、通常判断が必要な調査・検証 | `terra_worker` | Astra Medium | 親から継承 |
-| D2 上位枠 | D2 のまま、制約の結合、長い検証経路、難しいデバッグ、手戻りコストが大きい作業 | `terra_worker_max` | Astra High | 親から継承 |
+| D1 標準 Low | 少量・同形式で、固定入力と客観的完了条件がある読み取り専用作業 | `luna_task` | Luna Low | read-only |
+| D1 標準 Medium | 複数ファイルや異なる形式を扱い、客観的な条件に沿った軽い突き合わせが必要な作業 | `luna_task_medium` | Luna Medium | read-only |
+| D1 上位枠 | D1 のまま、異種入力、密な突合、網羅性の確認、多数の境界条件がある作業 | `luna_task_max` | Luna High | read-only |
+| D2 標準 | 状態変更を伴う実装、ツールを使う複数工程、通常判断が必要な調査・検証 | `terra_worker` | Sol Medium | 親から継承 |
+| D2 上位枠 | D2 のまま、制約の結合、長い検証経路、難しいデバッグ、手戻りコストが大きい作業 | `terra_worker_max` | Sol High | 親から継承 |
 | D3 標準 | 一つの難しい判断、曖昧性、高リスク、複数領域、設計判断 | `sol_specialist` | Astra High | read-only |
 | D3 上位枠 | 不確実性と結果の重大性がともに高く、証拠の競合、不可逆な設計、セキュリティ上の重大性などを含む作業 | `sol_specialist_max` | Astra xhigh | read-only |
 | D4 標準 | 2件以上の独立した D3 作業の所見を、制約や依存関係を踏まえて全体の判断へまとめる作業 | `astra_architect` | Astra xhigh | read-only |
@@ -44,12 +44,14 @@ D1・D3・D4 の子は読み取り専用です。書き込みを伴う通常実�
 
 既存六つの役割名とファイル名は互換性のため維持し、D1 Medium を1役、D4 を2役追加して計九役にしています。
 通常の九役に、管理者操作専用の `sol_admin_max` を加えた計十役を配布します。
-モデルは十役とも `gpt-6-astra` です。管理者役の名前も互換性のため維持します。
+D1 の三役は `gpt-6-luna`、D2 の二役は `gpt-6-sol`、D3・D4 と管理者役は `gpt-6-astra` です。
+`terra_worker` は GPT-6 Sol、`sol_specialist` は GPT-6 Astra を使う互換名です。管理者役の名前も維持します。
 `_max` は上位枠の互換名です。D1・D2 の `_max` は High、D3 の `_max` は xhigh、D4 の `_max` は Max に対応します。
 役割名からモデルや effort を推測せず、上の表と TOML の設定値を確認してください。
 
-この割り当ては、役割と権限の境界を保ちながら、すべての子を Astra に統一するためのプロジェクトの選択です。
-Low・Medium・High・xhigh・Max の品質や消費量を比較したベンチマーク結果ではありません。
+この割り当ては、定型処理に Luna、通常実装に Sol、重大な判断と統合に Astra を使うプロジェクトの選択です。
+既存の能力・権限境界と各役割の effort を維持し、モデルの移行だけを比較できるようにしています。
+モデル間や Low・Medium・High・xhigh・Max の品質・消費量を比較したベンチマーク結果ではありません。
 モデルの用途と利用可能な設定は [Codex のモデル案内](https://learn.chatgpt.com/docs/models) を参照してください。
 
 D1 の標準枠では、少量・同形式の入力なら Low、複数ファイルや異なる形式を軽く突き合わせるなら Medium を選びます。
@@ -125,8 +127,8 @@ Astra 向けの実行規則として、承認済みの作業を実装と必要�
 - Windows では PowerShell 7 以降を使用できること。
 - Linux では Bash、`awk`、`grep`、`sed`、`cmp` を使用できること。
 - カスタムエージェントと subagent workflow に対応した現行 Codex を使用していること。
-- CI の設定互換性検証基準は Codex CLI 0.149.1。Astra の利用には、アカウントとクライアントのモデル選択欄で対応を確認すること。
-- 使用するアカウントで `gpt-6-astra` を利用できること。
+- CI の設定互換性検証基準は Codex CLI 0.156.1。各モデルの利用には、アカウントとクライアントのモデル選択欄で対応を確認すること。
+- 使用するアカウントで `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna` を利用できること。
 - Astra Ultra を使う場合は、対応するアカウントとクライアントで Ultra が有効であること。
 - コマンドをこのリポジトリのルートで実行すること。
 
@@ -137,9 +139,12 @@ codex --version
 codex doctor --summary --no-color --ascii
 ```
 
-モデルと推論の選択欄では、Astra と各役割に必要な Low・Medium・High・xhigh・Max が表示されることも確認します。
-2026-09-05 のローカルモデルカタログ（client version 0.153.0）では、Astra の `low`、`medium`、`high`、`xhigh`、`max`、`ultra` を確認しました。
-設定の厳密な読込は、別途 Codex CLI 0.149.1 で検証しました。
+モデルと推論の選択欄では、上の表にあるモデルと各役割の effort が利用できることも確認します。
+2026-09-24 のローカルモデルカタログ（client version 0.155.0）では、Astra・Sol の `low`、`medium`、`high`、`xhigh`、`max`、`ultra` と、Luna の `low`、`medium`、`high`、`xhigh`、`max` を確認しました。
+Luna は Ultra に対応しません。子はすべて単独で処理し、Ultra は設定しません。
+設定の厳密な読込と変更した五役の実起動は Codex CLI 0.156.1 で確認しました。
+検証の条件と限界は [GPT-6 ファミリー移行の検証記録](docs/gpt6-family-validation.md) を参照してください。
+旧 CLI 0.154.0 では、この環境で GPT-6 Luna/Sol の実起動が拒否されました。モデルが表示されない場合や未対応エラーが出る場合は、クライアントを更新し、利用アカウントの対応も確認してください。
 カタログへの掲載や設定の読込成功だけでは、実際のモデル呼び出し成功は保証されません。
 
 ## 導入で変更するもの
@@ -151,11 +156,11 @@ codex doctor --summary --no-color --ascii
 | --- | --- |
 | `config.toml` | `[agents] enabled = true`、`max_concurrent_threads_per_session = 3` を設定し、旧 key を除去 |
 | `AGENTS.md` | マーカーで囲んだ task-aware delegation policy を追加または更新 |
-| `agents/luna-task.toml` | Astra Low の読み取り専用エージェントを配置 |
-| `agents/luna-task-medium.toml` | Astra Medium の読み取り専用エージェントを配置 |
-| `agents/luna-task-max.toml` | Astra High の読み取り専用エージェントを配置 |
-| `agents/terra-worker.toml` | Astra Medium の作業エージェントを配置 |
-| `agents/terra-worker-max.toml` | Astra High の作業エージェントを配置 |
+| `agents/luna-task.toml` | Luna Low の読み取り専用エージェントを配置 |
+| `agents/luna-task-medium.toml` | Luna Medium の読み取り専用エージェントを配置 |
+| `agents/luna-task-max.toml` | Luna High の読み取り専用エージェントを配置 |
+| `agents/terra-worker.toml` | Sol Medium の作業エージェントを配置 |
+| `agents/terra-worker-max.toml` | Sol High の作業エージェントを配置 |
 | `agents/sol-specialist.toml` | Astra High の読み取り専用エージェントを配置 |
 | `agents/sol-specialist-max.toml` | Astra xhigh の読み取り専用エージェントを配置（役割名は互換性維持） |
 | `agents/astra-architect.toml` | Astra xhigh の読み取り専用D4エージェントを配置 |
@@ -226,8 +231,9 @@ CRLF のまま実行すると、shebang の `bash` を解決できず起動に�
 既に親へ Ultra などを選択していて、その effort を保つ場合は標準導入を使ってください。
 Ultra を新たに使う場合は、対応クライアントのモデル選択で Astra と Ultra を選びます。
 
-旧 `-SetSolDefault` と `--set-sol-default` は廃止しました。
+GPT-5.6 Sol 用だった旧 `-SetSolDefault` と `--set-sol-default` は廃止したままです。
 指定すると、ファイルを変更する前に Astra オプションへの移行案内を表示して停止します。
+GPT-6 Sol を親に使う場合は、Codex のモデル選択で指定して標準導入を使います。
 親も Astra に切り替える場合は `-SetAstraDefault` または `--set-astra-default` を使ってください。
 
 ### 管理者操作用の役割
@@ -294,7 +300,7 @@ D1 以降の起動確認では、独立した成果など四つの委譲条件�
 10. 2件以上の独立した D3 所見をまとめる D4 を依頼し、`astra_architect` が xhigh で動くことを確認する。
 11. D3 所見間で重大な推奨や証拠が競合する D4 を依頼し、`astra_architect_max` が Max で動くことを確認する。
 12. 親が D0 では spawn せず、D1 から D4 では対応する `agent_type` を渡すこと、子が再委譲せず最大3子を守ることを確認する。
-13. 各子の詳細で、model がすべて `gpt-6-astra`、effort と実効権限が上の表と一致することを個別に確認する。
+13. 各子の詳細で、model が D1 は `gpt-6-luna`、D2 は `gpt-6-sol`、D3・D4 は `gpt-6-astra` となり、effort と実効権限が上の表と一致することを個別に確認する。
 14. 管理者操作の明示許可がなければ、通常役が昇格を試みず `sol_admin_max` も発行されないことを確認する。実際の管理者操作は、操作固有の許可を得た別の作業で検証する。
 
 `AGENTS.md` の指示チェーンは新しい実行の開始時に構築されるため、導入前から開いているタスクでは確認できません。
@@ -316,7 +322,7 @@ D1 以降の起動確認では、独立した成果など四つの委譲条件�
 
 - `config/AGENTS.task-aware.md`：グローバル指示へ追加するルーティング規則
 - `config/config.task-aware.toml`：`config.toml` へ統合する設定例
-- `agents/*.toml`：Astra の役割別エージェント（旧役割名を維持）
+- `agents/*.toml`：GPT-6 Luna・Sol・Astra の役割別エージェント（旧役割名を維持）
 - `rules/full-admin.rules`：管理者昇格の承認規則。導入先は `rules/task-aware-full-admin.rules`
 - `scripts/Install-TaskAwareAgent.ps1`：バックアップ付き導入スクリプト
 - `scripts/Test-TaskAwareAgent.ps1`：配置と Codex 設定の検証スクリプト

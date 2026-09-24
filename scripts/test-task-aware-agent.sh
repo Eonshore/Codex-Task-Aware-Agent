@@ -327,9 +327,9 @@ managed_policy_patterns=(
     'Task-aware delegation policy v3\.1'
     'Fix the request-mode authority and mutation boundary'
     'Delegation never expands the authority granted to the parent'
-    'gpt-6-astra'
+    'D1 uses `gpt-6-luna`, D2 uses `gpt-6-sol`'
     'The target parent is GPT-6 Astra'
-    'All ten child roles use'
+    'D3/D4 use `gpt-6-astra`'
     'Children never delegate'
     'Classify capability first, then choose reasoning effort'
     'luna_task_medium'
@@ -372,11 +372,11 @@ assert_managed_policy_excludes "$agents_md_path" "${forbidden_policy_patterns[@]
 run_policy_fault_injection
 
 expected_agent_specs=(
-    'luna-task.toml|luna_task|gpt-6-astra|low|read-only|never'
-    'luna-task-medium.toml|luna_task_medium|gpt-6-astra|medium|read-only|never'
-    'luna-task-max.toml|luna_task_max|gpt-6-astra|high|read-only|never'
-    'terra-worker.toml|terra_worker|gpt-6-astra|medium||never'
-    'terra-worker-max.toml|terra_worker_max|gpt-6-astra|high||never'
+    'luna-task.toml|luna_task|gpt-6-luna|low|read-only|never'
+    'luna-task-medium.toml|luna_task_medium|gpt-6-luna|medium|read-only|never'
+    'luna-task-max.toml|luna_task_max|gpt-6-luna|high|read-only|never'
+    'terra-worker.toml|terra_worker|gpt-6-sol|medium||never'
+    'terra-worker-max.toml|terra_worker_max|gpt-6-sol|high||never'
     'sol-specialist.toml|sol_specialist|gpt-6-astra|high|read-only|never'
     'sol-specialist-max.toml|sol_specialist_max|gpt-6-astra|xhigh|read-only|never'
     'astra-architect.toml|astra_architect|gpt-6-astra|xhigh|read-only|never'
@@ -406,12 +406,12 @@ done
 for agent_file in luna-task.toml luna-task-medium.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml sol-specialist.toml sol-specialist-max.toml astra-architect.toml astra-architect-max.toml; do
     assert_file_contains "$agents_path/$agent_file" 'Never invoke or request sudo'
 done
-# Retain the Astra branch role capability contracts.
+# Retain the GPT-6 family role capability contracts.
 assert_file_contains "$agents_path/luna-task.toml" \
     '^name[[:space:]]*=[[:space:]]*"luna_task"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-luna"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"low"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'Use as the default for compact, homogeneous D1' \
@@ -424,7 +424,7 @@ assert_file_contains "$agents_path/luna-task-medium.toml" \
     '^name[[:space:]]*=[[:space:]]*"luna_task_medium"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-luna"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'bounded D1 work with fixed inputs' \
@@ -437,7 +437,7 @@ assert_file_contains "$agents_path/luna-task-max.toml" \
     '^name[[:space:]]*=[[:space:]]*"luna_task_max"[[:space:]]*$' \
     '^description[[:space:]]*=[[:space:]]*"""' \
     '^developer_instructions[[:space:]]*=[[:space:]]*"""' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-luna"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$' \
     '^sandbox_mode[[:space:]]*=[[:space:]]*"read-only"[[:space:]]*$' \
     'D1 work that remains deterministic, read-only, and objectively' \
@@ -456,7 +456,7 @@ assert_file_contains "$agents_path/terra-worker.toml" \
     'multi-step work' \
     'requires ordinary' \
     'judgment while keeping clear success criteria' \
-    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-sol"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"medium"[[:space:]]*$'
 
 assert_file_contains "$agents_path/terra-worker-max.toml" \
@@ -470,7 +470,7 @@ assert_file_contains "$agents_path/terra-worker-max.toml" \
     'Use High reasoning for coupled constraints, edge cases, and verification' \
     'not to' \
     "broaden the task's capability boundary" \
-    '^model[[:space:]]*=[[:space:]]*"gpt-6-astra"[[:space:]]*$' \
+    '^model[[:space:]]*=[[:space:]]*"gpt-6-sol"[[:space:]]*$' \
     '^model_reasoning_effort[[:space:]]*=[[:space:]]*"high"[[:space:]]*$'
 
 assert_file_contains "$agents_path/sol-specialist.toml" \

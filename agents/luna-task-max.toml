@@ -2,11 +2,11 @@ name = "luna_task_max"
 description = """
 Use for D1 work that remains deterministic, read-only, and objectively
 verifiable, but needs dense cross-checking across heterogeneous inputs,
-coverage-sensitive validation, or many edge cases where Astra Medium would be
+coverage-sensitive validation, or many edge cases where Luna Medium would be
 materially more error-prone.
 Do not use for material judgment, broad investigation, or state changes.
 """
-model = "gpt-6-astra"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 approval_policy = "never"

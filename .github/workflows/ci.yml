@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.149.1' }}
+  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.156.1' }}
 
 jobs:
   windows:
@@ -143,6 +143,61 @@ jobs:
             throw 'The thread limit key was duplicated during migration.'
           }
           & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $migrationHome -ConfigOnlyRuntime
+
+          $familyMigrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-family-migration'
+          $familyAgentsPath = Join-Path $familyMigrationHome 'agents'
+          New-Item -ItemType Directory -Force -Path $familyAgentsPath | Out-Null
+          @(
+            'model = "gpt-6-astra"'
+            'model_reasoning_effort = "max"'
+            'approval_policy = "never"'
+            'sandbox_mode = "workspace-write"'
+          ) | Set-Content -LiteralPath (Join-Path $familyMigrationHome 'config.toml') -Encoding utf8
+          $familyRoles = @('luna-task.toml', 'luna-task-medium.toml', 'luna-task-max.toml', 'terra-worker.toml', 'terra-worker-max.toml')
+          foreach ($role in $familyRoles) {
+            @('model = "gpt-6-astra"', 'model_reasoning_effort = "high"') |
+              Set-Content -LiteralPath (Join-Path $familyAgentsPath $role) -Encoding utf8
+          }
+          @('name = "custom_unrelated"', 'description = """Unrelated custom role."""', 'developer_instructions = """Keep this role."""', 'model = "gpt-6-astra"', 'model_reasoning_effort = "low"') |
+            Set-Content -LiteralPath (Join-Path $familyAgentsPath 'custom-unrelated.toml') -Encoding utf8
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -ConfigOnlyRuntime
+          $familyConfig = Get-Content -Raw -LiteralPath (Join-Path $familyMigrationHome 'config.toml')
+          foreach ($expected in @('model = "gpt-6-astra"', 'model_reasoning_effort = "max"', 'approval_policy = "never"', 'sandbox_mode = "workspace-write"')) {
+            if ($familyConfig -notmatch [regex]::Escape($expected)) { throw "Family migration did not preserve parent setting: $expected" }
+          }
+          if ((Get-Content -Raw -LiteralPath (Join-Path $familyAgentsPath 'custom-unrelated.toml')) -notmatch 'custom_unrelated') {
+            throw 'Family migration overwrote an unrelated custom role.'
+          }
+          $backupRoles = Get-ChildItem -LiteralPath (Join-Path $familyMigrationHome 'task-aware-backups') -Recurse -Filter 'luna-task.toml'
+          if ($backupRoles.Count -eq 0 -or -not ($backupRoles | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'gpt-6-astra' })) {
+            throw 'Family migration did not back up the previous Astra-only D1 role.'
+          }
+          $backupConfigs = Get-ChildItem -LiteralPath (Join-Path $familyMigrationHome 'task-aware-backups') -Recurse -Filter 'config.toml'
+          if ($backupConfigs.Count -eq 0 -or -not ($backupConfigs | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'approval_policy = "never"' })) {
+            throw 'Family migration did not back up the prior parent configuration.'
+          }
+          $wrongRolePath = Join-Path $familyAgentsPath 'luna-task.toml'
+          $wrongRoleText = Get-Content -Raw -LiteralPath $wrongRolePath
+          $wrongRoleText = [regex]::Replace($wrongRoleText, '(?m)^model\s*=\s*"[^"]+"\s*$', 'model = "gpt-6-sol"')
+          [IO.File]::WriteAllText($wrongRolePath, $wrongRoleText, [Text.UTF8Encoding]::new($false))
+          $stopped = $false
+          try { & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -SkipRuntime -ErrorAction Stop }
+          catch { $stopped = $true }
+          if (-not $stopped) { throw 'Validator accepted a wrong D1 model assignment.' }
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          foreach ($role in $familyRoles) {
+            $rolePath = Join-Path $familyAgentsPath $role
+            $roleText = Get-Content -Raw -LiteralPath $rolePath
+            $roleText = [regex]::Replace($roleText, '(?m)^model\s*=\s*"[^"]+"\s*$', 'model = "gpt-6-astra"')
+            [IO.File]::WriteAllText($rolePath, $roleText, [Text.UTF8Encoding]::new($false))
+          }
+          $stopped = $false
+          try { & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -SkipRuntime -ErrorAction Stop }
+          catch { $stopped = $true }
+          if (-not $stopped) { throw 'Validator accepted all-Astra D1/D2 role assignments.' }
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -ConfigOnlyRuntime
 
           $conflictHome = Join-Path $env:RUNNER_TEMP 'task-aware-conflict'
           New-Item -ItemType Directory -Force -Path $conflictHome | Out-Null
@@ -451,6 +506,68 @@ jobs:
           scripts/test-task-aware-agent.sh \
             --codex-home "$migration_home" \
             --config-only-runtime
+
+          family_migration_home="$RUNNER_TEMP/task-aware-family-migration"
+          family_agents_path="$family_migration_home/agents"
+          mkdir -p -- "$family_agents_path"
+          printf '%s\n' \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"' > "$family_migration_home/config.toml"
+          family_roles=(luna-task.toml luna-task-medium.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml)
+          for role in "${family_roles[@]}"; do
+            printf '%s\n' \
+              'model = "gpt-6-astra"' \
+              'model_reasoning_effort = "high"' > "$family_agents_path/$role"
+          done
+          printf '%s\n' \
+            'name = "custom_unrelated"' \
+            'description = """Unrelated custom role."""' \
+            'developer_instructions = """Keep this role."""' \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "low"' > "$family_agents_path/custom-unrelated.toml"
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --config-only-runtime
+          for expected in \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"'; do
+            grep -Fqx -- "$expected" "$family_migration_home/config.toml" || {
+              printf 'Family migration did not preserve parent setting: %s\n' "$expected" >&2
+              exit 1
+            }
+          done
+          grep -Fqx -- 'name = "custom_unrelated"' "$family_agents_path/custom-unrelated.toml" || {
+            printf '%s\n' 'Family migration overwrote an unrelated custom role.' >&2
+            exit 1
+          }
+          backup_luna=$(find "$family_migration_home/task-aware-backups" -path '*/agents/luna-task.toml' -type f -print -quit)
+          [[ -n "$backup_luna" ]] && grep -Fqx 'model = "gpt-6-astra"' "$backup_luna" || {
+            printf '%s\n' 'Family migration did not back up the previous Astra-only D1 role.' >&2
+            exit 1
+          }
+          backup_config=$(find "$family_migration_home/task-aware-backups" -name config.toml -type f -print -quit)
+          [[ -n "$backup_config" ]] && grep -Fqx 'approval_policy = "never"' "$backup_config" || {
+            printf '%s\n' 'Family migration did not back up the prior parent configuration.' >&2
+            exit 1
+          }
+          sed -i -E 's/^model[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/model = "gpt-6-sol"/' "$family_agents_path/luna-task.toml"
+          if scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --skip-runtime; then
+            printf '%s\n' 'Validator accepted a wrong D1 model assignment.' >&2
+            exit 1
+          fi
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          for role in "${family_roles[@]}"; do
+            sed -i -E 's/^model[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/model = "gpt-6-astra"/' "$family_agents_path/$role"
+          done
+          if scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --skip-runtime; then
+            printf '%s\n' 'Validator accepted all-Astra D1/D2 role assignments.' >&2
+            exit 1
+          fi
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --config-only-runtime
 
           conflict_home="$RUNNER_TEMP/task-aware-conflict"
           mkdir -p -- "$conflict_home"

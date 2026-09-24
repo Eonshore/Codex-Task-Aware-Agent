@@ -2,12 +2,12 @@ name = "luna_task_medium"
 description = """
 Use for bounded D1 work with fixed inputs, an explicit output contract, and an
 objective success condition that needs modest reconciliation across files or
-formats. Use Astra Medium when compact, homogeneous Low work is insufficient,
+formats. Use Luna Medium when compact, homogeneous Low work is insufficient,
 but dense cross-checking, coverage-sensitive validation, and many edge cases
 do not justify luna_task_max. This role remains deterministic and read-only.
 Do not use for material judgment, broad investigation, or state changes.
 """
-model = "gpt-6-astra"
+model = "gpt-6-luna"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 

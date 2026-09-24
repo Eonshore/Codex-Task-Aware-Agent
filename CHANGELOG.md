@@ -14,7 +14,7 @@
 ### 変更
 
 - 配布ポリシーを v3.1 に更新し、判断順、権限、有限期限、必須確認と終了条件を統合。管理ブロックの 10 KiB 上限を維持。
-- 親の導入オプションと全十役の子を GPT-6 Astra に統一。管理者専用役も Astra Max を使用。D1 は Low/Medium/High、D2 は Medium/High、D3 は High/xhigh、D4 は xhigh/Max を使用。
+- 親の導入オプションは GPT-6 Astra xhigh。子は D1 を GPT-6 Luna Low/Medium/High、D2 を GPT-6 Sol Medium/High、D3 を GPT-6 Astra High/xhigh、D4 を GPT-6 Astra xhigh/Max に更新。管理者専用役は Astra Max を維持。
 - 既存六役の名前とファイル名を維持。`_max` は上位枠の識別名とし、D1・D2 は High、D3 は xhigh、D4 は Max に対応。
 - D1 の軽い突き合わせ向けに `luna_task_medium` を追加。標準 Low・Medium と上位 High の選択基準を明確化。
 - D4 の所見統合用に `astra_architect` / `astra_architect_max` を追加。2件以上の独立した D3 所見を入力とし、読み取り専用・再委譲禁止・最大3子を維持。
@@ -28,10 +28,11 @@
 
 - マーカーの完全一致・順序・一意性、配布ポリシー・十役・規則のバイト一致を検査。CRLF、ブロック外の記述、不正なマーカー、期限や終了条件の欠落、差異、10 KiB 超過を回帰検証する。
 
-- CI の固定バージョンを、Astra 設定の厳密な読込を確認した Codex CLI 0.149.1 へ更新。
-- Windows/Linux validator を十役の model、effort、sandbox、承認ポリシー と Astra 向けポリシーの検査へ更新。
+- CI の固定バージョンを、GPT-6 ファミリー設定を検証する Codex CLI 0.156.1 へ更新。
+- Windows/Linux validator を十役の model、effort、sandbox、承認ポリシーと GPT-6 ファミリーの割り当ての検査へ更新。
 - Windows/Linux installer に、旧 Luna/Terra High role を backup 後に除去する移行を追加。
 - CI に親の設定維持、Astra opt-in、廃止した Sol オプションの停止と再導入の検査を追加。
+- 全 Astra 構成からの再導入で D1/D2 のモデルを更新し、既存の親・権限・独自役割・バックアップを保持する移行と、誤ったモデル割り当ての拒否を検証。
 - リリース前の実動作確認を、九役の model/effort と D0 から D4 の役割選択へ拡張。静的検査とモデル起動の検証を区別。
 
 ## [0.1.0] - 2026-07-26

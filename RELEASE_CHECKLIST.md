@@ -8,9 +8,10 @@
 - [ ] `CHANGELOG.md` の version、日付、release link を確定する。
 - [ ] `LICENSE`、`SECURITY.md`、`CONTRIBUTING.md` が release archive に含まれる。
 - [ ] GitHub Actions の Windows/Linux job が成功する。
-- [ ] 認証済みの新しい Codex task で D0 の no-spawn、D1 の Low/Medium/High 条件と D2/D3/D4 の標準・上位条件を実行する。子の実起動を通じて、model がすべて `gpt-6-astra`、effort が D1 の Low/Medium/High、D2 の Medium/High、D3 の High/xhigh、D4 の xhigh/Max になっていることを確認する。
+- [ ] 認証済みの新しい Codex task で D0 の no-spawn、D1 の Low/Medium/High 条件と D2/D3/D4 の標準・上位条件を実行する。子の実起動を通じて、model が D1 は `gpt-6-luna`、D2 は `gpt-6-sol`、D3・D4 は `gpt-6-astra`、effort が D1 の Low/Medium/High、D2 の Medium/High、D3 の High/xhigh、D4 の xhigh/Max になっていることを確認する。
 - [ ] D4 の入力に2件以上の独立した D3 所見が含まれ、D4 も読み取り専用・再委譲禁止・同時に最大3子を守ることを確認する。
 - [ ] 親の Astra xhigh 設定、標準導入での既存親設定の維持、廃止した Sol オプションの案内と変更前の停止を確認する。
+- [ ] 全 Astra 構成から再導入し、D1/D2 のモデル更新と、親・effort・権限・独自役割・バックアップの保持を確認する。
 - [ ] 上位枠が能力境界や sandbox を広げず、task packet に昇格理由が含まれることを確認する。
 - [ ] 管理者許可がない場合は通常役が昇格を試みず、`sol_admin_max` も発行されない。規則の直接入口が `prompt` と評価されることを、昇格コマンドを実行せず確認する。
 - [ ] 管理者役も `gpt-6-astra`／`max` とし、専用の承認条件を維持する。

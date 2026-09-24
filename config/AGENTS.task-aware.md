@@ -6,7 +6,8 @@ Fix the request-mode authority and mutation boundary first.
 Delegation never expands the authority granted to the parent. Answer, review,
 diagnosis, and monitoring packets must prohibit file and external-state changes.
 
-The target parent is GPT-6 Astra. All ten child roles use `gpt-6-astra`.
+The target parent is GPT-6 Astra. D1 uses `gpt-6-luna`, D2 uses `gpt-6-sol`,
+and D3/D4 use `gpt-6-astra`.
 Apply the gates when independent work can run alongside useful parent work;
 a model name or Ultra cannot permit spawn. Children never delegate.
 Finish authorized work and required checks; resolve reversible choices from
@@ -55,9 +56,9 @@ Reasoning effort alone never expands a role's permissions or capability class.
   combined consequences make xhigh insufficient. Never repeat D3 investigations.
 
 The mapping is D1 Low/Medium/High, D2 Medium/High, D3 High/xhigh, and D4 xhigh/Max.
-The nine ordinary roles and separate `sol_admin_max` (Astra Max) retain distinct
-capability/authority. The luna, terra, sol, and _max names are compatibility
-identifiers, not model or effort declarations. Use the least sufficient effort.
+Nine ordinary roles and separate `sol_admin_max` (Astra Max) retain distinct
+capability/authority. Role names are compatibility identifiers, not model or
+effort declarations. Use the least sufficient effort.
 For D1 Medium, state what reconciliation makes Low insufficient; select High
 directly when its conditions are clear, without waiting for Low/Medium failure.
 Justify upper roles against Medium for D1/D2, High for D3, or xhigh for D4.

@@ -264,9 +264,9 @@ $managedPolicyPatterns = @(
     'Task-aware delegation policy v3\.1',
     'Fix the request-mode authority and mutation boundary',
     'Delegation never expands the authority granted to the parent',
-    'gpt-6-astra',
+    'D1 uses `gpt-6-luna`, D2 uses `gpt-6-sol`',
     'The target parent is GPT-6 Astra',
-    'All ten child roles use',
+    'D3/D4 use `gpt-6-astra`',
     'Children never delegate',
     'Classify capability first, then choose reasoning effort',
     'luna_task_medium',
@@ -322,11 +322,11 @@ Assert-ManagedPolicyExcludes -Artifact $livePolicyArtifact -Patterns $forbiddenP
 Invoke-PolicyFaultInjection -SourceArtifact $sourcePolicyArtifact
 
 $expectedAgents = [ordered]@{
-    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-6-astra'; Effort = 'low'; Sandbox = 'read-only'; Approval = 'never' }
-    'luna-task-medium.toml' = [ordered]@{ Name = 'luna_task_medium'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = 'read-only'; Approval = 'never' }
-    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
-    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-6-astra'; Effort = 'medium'; Sandbox = $null; Approval = 'never' }
-    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = $null; Approval = 'never' }
+    'luna-task.toml' = [ordered]@{ Name = 'luna_task'; Model = 'gpt-6-luna'; Effort = 'low'; Sandbox = 'read-only'; Approval = 'never' }
+    'luna-task-medium.toml' = [ordered]@{ Name = 'luna_task_medium'; Model = 'gpt-6-luna'; Effort = 'medium'; Sandbox = 'read-only'; Approval = 'never' }
+    'luna-task-max.toml' = [ordered]@{ Name = 'luna_task_max'; Model = 'gpt-6-luna'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
+    'terra-worker.toml' = [ordered]@{ Name = 'terra_worker'; Model = 'gpt-6-sol'; Effort = 'medium'; Sandbox = $null; Approval = 'never' }
+    'terra-worker-max.toml' = [ordered]@{ Name = 'terra_worker_max'; Model = 'gpt-6-sol'; Effort = 'high'; Sandbox = $null; Approval = 'never' }
     'sol-specialist.toml' = [ordered]@{ Name = 'sol_specialist'; Model = 'gpt-6-astra'; Effort = 'high'; Sandbox = 'read-only'; Approval = 'never' }
     'sol-specialist-max.toml' = [ordered]@{ Name = 'sol_specialist_max'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only'; Approval = 'never' }
     'astra-architect.toml' = [ordered]@{ Name = 'astra_architect'; Model = 'gpt-6-astra'; Effort = 'xhigh'; Sandbox = 'read-only'; Approval = 'never' }

@@ -2,11 +2,11 @@ name = "terra_worker_max"
 description = """
 Use for D2 work that stays within ordinary engineering judgment but has many
 coupled constraints, a long tool or verification chain, difficult debugging,
-or expensive rework that justifies deeper reasoning than Astra Medium.
+or expensive rework that justifies deeper reasoning than Sol Medium.
 Do not use for unresolved architectural trade-offs, exceptional risk, or D3
 ambiguity.
 """
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 
 approval_policy = "never"

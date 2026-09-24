@@ -10,7 +10,8 @@ Install the Codex Task-Aware Agent configuration globally.
 
 Options:
   --codex-home PATH       Target Codex home (default: $CODEX_HOME or ~/.codex)
-  --set-sol-default       Set gpt-5.6-sol with xhigh reasoning as the default
+  --set-astra-default     Set gpt-6-astra with xhigh reasoning as the default
+  --set-sol-default       Retired; use --set-astra-default instead
   --enable-full-access    Set approval_policy=never and danger-full-access
   -h, --help              Show this help
 EOF
@@ -22,7 +23,7 @@ die() {
 }
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
-set_sol_default=false
+set_astra_default=false
 enable_full_access=false
 
 while (($# > 0)); do
@@ -33,7 +34,10 @@ while (($# > 0)); do
             shift 2
             ;;
         --set-sol-default)
-            set_sol_default=true
+            die '--set-sol-default was retired; use --set-astra-default instead'
+            ;;
+        --set-astra-default)
+            set_astra_default=true
             shift
             ;;
         --enable-full-access)
@@ -53,9 +57,12 @@ done
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repository_root=$(cd -- "$script_dir/.." && pwd -P)
 agents_source="$repository_root/agents"
+rules_source="$repository_root/rules/full-admin.rules"
 policy_source="$repository_root/config/AGENTS.task-aware.md"
 config_path="$codex_home/config.toml"
 agents_path="$codex_home/agents"
+rules_path="$codex_home/rules"
+full_admin_rule_path="$rules_path/task-aware-full-admin.rules"
 agents_md_path="$codex_home/AGENTS.md"
 timestamp=$(date '+%Y%m%d-%H%M%S')
 backup_path="$codex_home/task-aware-backups/$timestamp"
@@ -67,16 +74,21 @@ while [[ -e "$backup_path" ]]; do
 done
 
 [[ -d "$agents_source" ]] || die "missing agents directory: $agents_source"
+[[ -f "$rules_source" ]] || die "missing full-admin rule file: $rules_source"
 [[ -f "$policy_source" ]] || die "missing policy file: $policy_source"
 command -v awk >/dev/null || die 'awk is required'
 
 expected_agent_files=(
     luna-task.toml
+    luna-task-medium.toml
     luna-task-max.toml
     terra-worker.toml
     terra-worker-max.toml
     sol-specialist.toml
     sol-specialist-max.toml
+    astra-architect.toml
+    astra-architect-max.toml
+    sol-admin-max.toml
 )
 retired_agent_files=(luna-task-high.toml terra-worker-high.toml)
 for agent_file in "${expected_agent_files[@]}"; do
@@ -92,14 +104,17 @@ validate_policy_markers() {
             end_marker = "<!-- END CODEX TASK-AWARE AGENT -->"
         }
 
-        $0 == begin_marker {
-            begin_count++
-            if (begin_count > 1 || end_count > 0) invalid = 1
-        }
-
-        $0 == end_marker {
-            end_count++
-            if (begin_count != 1 || end_count > 1) invalid = 1
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == begin_marker) {
+                begin_count++
+                if (begin_count > 1 || end_count > 0) invalid = 1
+            }
+            if (line == end_marker) {
+                end_count++
+                if (begin_count != 1 || end_count > 1) invalid = 1
+            }
         }
 
         END {
@@ -260,18 +275,24 @@ merge_policy_block() {
             for (i = 1; i <= policy_count; i++) print policy[i]
         }
 
-        $0 == begin_marker {
-            if (!policy_written) {
-                emit_policy()
-                policy_written = 1
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == begin_marker) {
+                if (!policy_written) {
+                    emit_policy()
+                    policy_written = 1
+                }
+                block_found = 1
+                skipping = 1
+                next
             }
-            block_found = 1
-            skipping = 1
-            next
         }
 
         skipping {
-            if ($0 == end_marker) skipping = 0
+            line = $0
+            sub(/\r$/, "", line)
+            if (line == end_marker) skipping = 0
             next
         }
 
@@ -296,10 +317,11 @@ if [[ "$enable_full_access" == true && -f "$config_path" ]] &&
     die 'cannot use --enable-full-access while config.toml defines default_permissions; remove one permission system before retrying'
 fi
 
-mkdir -p -- "$codex_home" "$agents_path" "$backup_path"
+mkdir -p -- "$codex_home" "$agents_path" "$rules_path" "$backup_path"
 
 backup_if_present "$config_path"
 backup_if_present "$agents_md_path"
+backup_if_present "$full_admin_rule_path"
 for agent_file in "${expected_agent_files[@]}"; do
     backup_if_present "$agents_path/$agent_file"
 done
@@ -315,8 +337,8 @@ remove_toml_section_key "$config_path" agents max_threads
 remove_toml_section_key "$config_path" agents max_depth
 remove_toml_section_key "$config_path" features multi_agent
 
-if [[ "$set_sol_default" == true ]]; then
-    set_top_level_toml_value "$config_path" model '"gpt-5.6-sol"'
+if [[ "$set_astra_default" == true ]]; then
+    set_top_level_toml_value "$config_path" model '"gpt-6-astra"'
     set_top_level_toml_value "$config_path" model_reasoning_effort '"xhigh"'
 fi
 
@@ -329,6 +351,7 @@ merge_policy_block "$agents_md_path"
 for agent_file in "${expected_agent_files[@]}"; do
     cp -f -- "$agents_source/$agent_file" "$agents_path/$agent_file"
 done
+cp -f -- "$rules_source" "$full_admin_rule_path"
 for agent_file in "${retired_agent_files[@]}"; do
     rm -f -- "$agents_path/$agent_file"
 done

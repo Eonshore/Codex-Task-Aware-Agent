@@ -3,15 +3,20 @@ description = """
 Use as the default for bounded D2 state-changing implementation, tool-heavy
 multi-step work, or investigation and verification that requires ordinary
 judgment while keeping clear success criteria. Prefer terra_worker_max when
-coupled constraints, difficult debugging, or expensive rework justify Max.
+coupled constraints, difficult debugging, or expensive rework justify High.
 """
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "medium"
+approval_policy = "never"
 
 developer_instructions = """
 Own one independently verifiable work item.
 Stay within the supplied file and subsystem scope.
 Do not spawn subagents.
+Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any
+equivalent administrator mechanism. Do not attempt to escape the workspace
+sandbox. If administrator privilege is required, return NEEDS_ESCALATION with
+the exact blocked operation.
 Return outcome, changed files or evidence, verification, and remaining risk.
 Escalate only when ambiguity or risk materially exceeds the task packet.
 """

@@ -1,4 +1,9 @@
 # Merge this section into ~/.codex/config.toml.
+# Optional parent defaults (place before any table, or use --set-astra-default):
+# model = "gpt-6-astra"
+# model_reasoning_effort = "xhigh"
+# Standard installation preserves the existing parent model and effort.
+
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 3

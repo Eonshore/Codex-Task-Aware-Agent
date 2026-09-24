@@ -2,20 +2,24 @@ name = "luna_task_max"
 description = """
 Use for D1 work that remains deterministic, read-only, and objectively
 verifiable, but needs dense cross-checking across heterogeneous inputs,
-coverage-sensitive validation, or many edge cases where Luna Low would be
+coverage-sensitive validation, or many edge cases where Luna Medium would be
 materially more error-prone.
 Do not use for material judgment, broad investigation, or state changes.
 """
-model = "gpt-5.6-luna"
-model_reasoning_effort = "max"
+model = "gpt-6-luna"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
+approval_policy = "never"
 
 developer_instructions = """
 Handle exactly one bounded D1 task.
-Use Max reasoning for completeness and cross-checking, not to broaden the task's
+Use High reasoning for completeness and cross-checking, not to broaden the task's
 capability boundary.
 Do not broaden scope or delegate.
 Do not modify files or external state, even if the runtime grants broader access.
+Never invoke or request sudo, doas, pkexec, su, Windows elevation, or any
+equivalent administrator mechanism. If administrator privilege is required,
+return NEEDS_ESCALATION with the exact blocked operation.
 Return only the requested result and essential evidence.
 If state changes, material judgment, or architectural reasoning are required,
 return NEEDS_ESCALATION with a one-sentence reason.

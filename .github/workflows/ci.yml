@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.145.0' }}
+  CODEX_PACKAGE: ${{ github.event_name == 'schedule' && '@openai/codex@latest' || '@openai/codex@0.156.1' }}
 
 jobs:
   windows:
@@ -63,6 +63,53 @@ jobs:
           $backupCount = @(Get-ChildItem -Directory -LiteralPath (Join-Path $cleanHome 'task-aware-backups')).Count
           if ($backupCount -lt 2) { throw 'Repeated installation reused a backup directory.' }
 
+          $standardHome = Join-Path $env:RUNNER_TEMP 'task-aware-standard-defaults'
+          New-Item -ItemType Directory -Force -Path $standardHome | Out-Null
+          @(
+            'model = "parent-model"'
+            'model_reasoning_effort = "medium"'
+            'approval_policy = "on-request"'
+            'sandbox_mode = "workspace-write"'
+          ) | Set-Content -LiteralPath (Join-Path $standardHome 'config.toml') -Encoding utf8
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $standardHome
+          $standard = Get-Content -Raw -LiteralPath (Join-Path $standardHome 'config.toml')
+          foreach ($expected in @(
+            'model = "parent-model"',
+            'model_reasoning_effort = "medium"',
+            'approval_policy = "on-request"',
+            'sandbox_mode = "workspace-write"'
+          )) {
+            $key = $expected.Split('=')[0].Trim()
+            if ([regex]::Matches($standard, "(?m)^\s*" + [regex]::Escape($key) + '\s*=').Count -ne 1 -or
+                $standard -notmatch [regex]::Escape($expected)) {
+              throw "Standard install changed $expected."
+            }
+          }
+
+          $astraHome = Join-Path $env:RUNNER_TEMP 'task-aware-astra-default'
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $astraHome -SetAstraDefault
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $astraHome -SetAstraDefault
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $astraHome -ConfigOnlyRuntime
+          $astra = Get-Content -Raw -LiteralPath (Join-Path $astraHome 'config.toml')
+          foreach ($expected in @('model = "gpt-6-astra"', 'model_reasoning_effort = "xhigh"')) {
+            if ([regex]::Matches($astra, "(?m)^\s*" + [regex]::Escape($expected.Split('=')[0].Trim()) + '\s*=').Count -ne 1 -or
+                $astra -notmatch [regex]::Escape($expected)) {
+              throw "Astra default was not set exactly once: $expected."
+            }
+          }
+
+          $retiredSolHome = Join-Path $env:RUNNER_TEMP 'task-aware-retired-sol'
+          $stopped = $false
+          try {
+            & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $retiredSolHome -SetSolDefault -ErrorAction Stop
+          }
+          catch {
+            $stopped = $_.Exception.Message -like '*was retired*'
+          }
+          if (-not $stopped -or (Test-Path -LiteralPath $retiredSolHome)) {
+            throw 'Retired Sol option did not fail before filesystem mutation.'
+          }
+
           $migrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-migration'
           New-Item -ItemType Directory -Force -Path $migrationHome | Out-Null
           $migrationConfig = @(
@@ -97,6 +144,61 @@ jobs:
           }
           & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $migrationHome -ConfigOnlyRuntime
 
+          $familyMigrationHome = Join-Path $env:RUNNER_TEMP 'task-aware-family-migration'
+          $familyAgentsPath = Join-Path $familyMigrationHome 'agents'
+          New-Item -ItemType Directory -Force -Path $familyAgentsPath | Out-Null
+          @(
+            'model = "gpt-6-astra"'
+            'model_reasoning_effort = "max"'
+            'approval_policy = "never"'
+            'sandbox_mode = "workspace-write"'
+          ) | Set-Content -LiteralPath (Join-Path $familyMigrationHome 'config.toml') -Encoding utf8
+          $familyRoles = @('luna-task.toml', 'luna-task-medium.toml', 'luna-task-max.toml', 'terra-worker.toml', 'terra-worker-max.toml')
+          foreach ($role in $familyRoles) {
+            @('model = "gpt-6-astra"', 'model_reasoning_effort = "high"') |
+              Set-Content -LiteralPath (Join-Path $familyAgentsPath $role) -Encoding utf8
+          }
+          @('name = "custom_unrelated"', 'description = """Unrelated custom role."""', 'developer_instructions = """Keep this role."""', 'model = "gpt-6-astra"', 'model_reasoning_effort = "low"') |
+            Set-Content -LiteralPath (Join-Path $familyAgentsPath 'custom-unrelated.toml') -Encoding utf8
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -ConfigOnlyRuntime
+          $familyConfig = Get-Content -Raw -LiteralPath (Join-Path $familyMigrationHome 'config.toml')
+          foreach ($expected in @('model = "gpt-6-astra"', 'model_reasoning_effort = "max"', 'approval_policy = "never"', 'sandbox_mode = "workspace-write"')) {
+            if ($familyConfig -notmatch [regex]::Escape($expected)) { throw "Family migration did not preserve parent setting: $expected" }
+          }
+          if ((Get-Content -Raw -LiteralPath (Join-Path $familyAgentsPath 'custom-unrelated.toml')) -notmatch 'custom_unrelated') {
+            throw 'Family migration overwrote an unrelated custom role.'
+          }
+          $backupRoles = Get-ChildItem -LiteralPath (Join-Path $familyMigrationHome 'task-aware-backups') -Recurse -Filter 'luna-task.toml'
+          if ($backupRoles.Count -eq 0 -or -not ($backupRoles | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'gpt-6-astra' })) {
+            throw 'Family migration did not back up the previous Astra-only D1 role.'
+          }
+          $backupConfigs = Get-ChildItem -LiteralPath (Join-Path $familyMigrationHome 'task-aware-backups') -Recurse -Filter 'config.toml'
+          if ($backupConfigs.Count -eq 0 -or -not ($backupConfigs | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'approval_policy = "never"' })) {
+            throw 'Family migration did not back up the prior parent configuration.'
+          }
+          $wrongRolePath = Join-Path $familyAgentsPath 'luna-task.toml'
+          $wrongRoleText = Get-Content -Raw -LiteralPath $wrongRolePath
+          $wrongRoleText = [regex]::Replace($wrongRoleText, '(?m)^model\s*=\s*"[^"]+"\s*$', 'model = "gpt-6-sol"')
+          [IO.File]::WriteAllText($wrongRolePath, $wrongRoleText, [Text.UTF8Encoding]::new($false))
+          $stopped = $false
+          try { & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -SkipRuntime -ErrorAction Stop }
+          catch { $stopped = $true }
+          if (-not $stopped) { throw 'Validator accepted a wrong D1 model assignment.' }
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          foreach ($role in $familyRoles) {
+            $rolePath = Join-Path $familyAgentsPath $role
+            $roleText = Get-Content -Raw -LiteralPath $rolePath
+            $roleText = [regex]::Replace($roleText, '(?m)^model\s*=\s*"[^"]+"\s*$', 'model = "gpt-6-astra"')
+            [IO.File]::WriteAllText($rolePath, $roleText, [Text.UTF8Encoding]::new($false))
+          }
+          $stopped = $false
+          try { & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -SkipRuntime -ErrorAction Stop }
+          catch { $stopped = $true }
+          if (-not $stopped) { throw 'Validator accepted all-Astra D1/D2 role assignments.' }
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $familyMigrationHome -ConfigOnlyRuntime
+
           $conflictHome = Join-Path $env:RUNNER_TEMP 'task-aware-conflict'
           New-Item -ItemType Directory -Force -Path $conflictHome | Out-Null
           'default_permissions = ":workspace"' |
@@ -124,6 +226,166 @@ jobs:
             $stopped = $true
           }
           if (-not $stopped) { throw 'Malformed AGENTS.md markers were not rejected.' }
+
+          $literalMarkerHome = Join-Path $env:RUNNER_TEMP 'task-aware-literal-markers'
+          New-Item -ItemType Directory -Force -Path $literalMarkerHome | Out-Null
+          $literalMarkerLine = 'User text: <!-- BEGIN CODEX TASK-AWARE AGENT --> and <!-- END CODEX TASK-AWARE AGENT --> are examples.'
+          [IO.File]::WriteAllText(
+            (Join-Path $literalMarkerHome 'AGENTS.md'),
+            $literalMarkerLine + "`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $literalMarkerHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $literalMarkerHome -SkipRuntime
+          if ((Get-Content -Raw -LiteralPath (Join-Path $literalMarkerHome 'AGENTS.md')) -notmatch [regex]::Escape($literalMarkerLine)) {
+            throw 'Inline marker examples were not preserved.'
+          }
+
+          $preserveHome = Join-Path $env:RUNNER_TEMP 'task-aware-preserve'
+          New-Item -ItemType Directory -Force -Path $preserveHome | Out-Null
+          $preserveConfig = @(
+            'model = "gpt-6-astra"'
+            'model_reasoning_effort = "max"'
+            'approval_policy = "never"'
+            'sandbox_mode = "workspace-write"'
+            'unmanaged_setting = "retain-me"'
+          ) -join "`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $preserveHome 'config.toml'),
+            $preserveConfig,
+            [Text.UTF8Encoding]::new($false)
+          )
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $preserveHome
+          $preserved = Get-Content -Raw -LiteralPath (Join-Path $preserveHome 'config.toml')
+          foreach ($line in @(
+              'model = "gpt-6-astra"'
+              'model_reasoning_effort = "max"'
+              'approval_policy = "never"'
+              'sandbox_mode = "workspace-write"'
+              'unmanaged_setting = "retain-me"'
+            )) {
+            if ($preserved -notmatch [regex]::Escape($line)) {
+              throw "Default installation did not preserve: $line"
+            }
+          }
+
+          $selectionConflictHome = Join-Path $env:RUNNER_TEMP 'task-aware-selection-conflict'
+          New-Item -ItemType Directory -Force -Path $selectionConflictHome | Out-Null
+          $selectionConfigPath = Join-Path $selectionConflictHome 'config.toml'
+          [IO.File]::WriteAllText(
+            $selectionConfigPath,
+            "model = ""preserve""`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+          $beforeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $selectionConfigPath).Hash
+          $stopped = $false
+          try {
+            & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $selectionConflictHome -SetSolDefault -SetAstraDefault -ErrorAction Stop
+          }
+          catch {
+            $stopped = $true
+          }
+          if (-not $stopped) { throw 'Conflicting parent model switches were accepted.' }
+          $afterHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $selectionConfigPath).Hash
+          if ($beforeHash -cne $afterHash) { throw 'Conflicting parent model switches mutated config.toml.' }
+          foreach ($path in @('task-aware-backups', 'agents', 'rules', 'AGENTS.md')) {
+            if (Test-Path -LiteralPath (Join-Path $selectionConflictHome $path)) {
+              throw "Conflicting parent model switches created $path."
+            }
+          }
+
+          foreach ($markerCase in @('duplicate', 'reversed')) {
+            $markerHome = Join-Path $env:RUNNER_TEMP "task-aware-markers-$markerCase"
+            New-Item -ItemType Directory -Force -Path $markerHome | Out-Null
+            $markerContent = switch ($markerCase) {
+              'duplicate' {
+                "<!-- BEGIN CODEX TASK-AWARE AGENT -->`n<!-- END CODEX TASK-AWARE AGENT -->`n<!-- BEGIN CODEX TASK-AWARE AGENT -->`n<!-- END CODEX TASK-AWARE AGENT -->`n"
+              }
+              default {
+                "<!-- END CODEX TASK-AWARE AGENT -->`n<!-- BEGIN CODEX TASK-AWARE AGENT -->`n"
+              }
+            }
+            [IO.File]::WriteAllText((Join-Path $markerHome 'AGENTS.md'), $markerContent, [Text.UTF8Encoding]::new($false))
+            $stopped = $false
+            try {
+              & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $markerHome -ErrorAction Stop
+            }
+            catch {
+              $stopped = $true
+            }
+            if (-not $stopped) { throw "Marker case unexpectedly succeeded: $markerCase" }
+          }
+
+          $crlfHome = Join-Path $env:RUNNER_TEMP 'task-aware-crlf'
+          New-Item -ItemType Directory -Force -Path $crlfHome | Out-Null
+          $policy = Get-Content -Raw -LiteralPath ./config/AGENTS.task-aware.md
+          $crlfPolicy = [regex]::Replace($policy, "`r?`n", "`r`n")
+          [IO.File]::WriteAllText((Join-Path $crlfHome 'AGENTS.md'), $crlfPolicy, [Text.UTF8Encoding]::new($false))
+          & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $crlfHome
+          & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $crlfHome -SkipRuntime
+
+          foreach ($drift in @('policy', 'role', 'rule')) {
+            $driftHome = Join-Path $env:RUNNER_TEMP "task-aware-drift-$drift"
+            & ./scripts/Install-TaskAwareAgent.ps1 -CodexHome $driftHome
+            switch ($drift) {
+              'policy' {
+                $driftPath = Join-Path $driftHome 'AGENTS.md'
+                $driftContent = Get-Content -Raw -LiteralPath $driftPath
+                $driftContent = $driftContent.Replace(
+                  '<!-- END CODEX TASK-AWARE AGENT -->',
+                  "# drift`n<!-- END CODEX TASK-AWARE AGENT -->"
+                )
+                [IO.File]::WriteAllText($driftPath, $driftContent, [Text.UTF8Encoding]::new($false))
+              }
+              'role' {
+                [IO.File]::AppendAllText(
+                  (Join-Path $driftHome 'agents/luna-task.toml'),
+                  "# drift`n",
+                  [Text.UTF8Encoding]::new($false)
+                )
+              }
+              'rule' {
+                [IO.File]::AppendAllText(
+                  (Join-Path $driftHome 'rules/task-aware-full-admin.rules'),
+                  "# drift`n",
+                  [Text.UTF8Encoding]::new($false)
+                )
+              }
+            }
+            $stopped = $false
+            try {
+              & ./scripts/Test-TaskAwareAgent.ps1 -CodexHome $driftHome -SkipRuntime -ErrorAction Stop
+            }
+            catch {
+              $stopped = $true
+            }
+            if (-not $stopped) { throw "Drift case unexpectedly passed: $drift" }
+          }
+
+      - name: Reject oversized managed policy
+        shell: pwsh
+        run: |
+          $budgetRepo = Join-Path $env:RUNNER_TEMP 'task-aware-budget-repo'
+          $budgetHome = Join-Path $env:RUNNER_TEMP 'task-aware-budget-home'
+          New-Item -ItemType Directory -Path $budgetRepo | Out-Null
+          foreach ($directory in @('scripts', 'config', 'agents', 'rules')) {
+            Copy-Item -LiteralPath $directory -Destination $budgetRepo -Recurse
+          }
+          $budgetSource = Join-Path $budgetRepo 'config/AGENTS.task-aware.md'
+          $policy = Get-Content -Raw -LiteralPath $budgetSource
+          $end = '<!-- END CODEX TASK-AWARE AGENT -->'
+          $policy = $policy.Replace($end, "<!-- $('x' * 10240) -->`n$end")
+          [IO.File]::WriteAllText($budgetSource, $policy, [Text.UTF8Encoding]::new($false))
+          & (Join-Path $budgetRepo 'scripts/Install-TaskAwareAgent.ps1') -CodexHome $budgetHome
+          $stopped = $false
+          try {
+            & (Join-Path $budgetRepo 'scripts/Test-TaskAwareAgent.ps1') -CodexHome $budgetHome -SkipRuntime
+          }
+          catch {
+            if ($_.Exception.Message -notmatch 'Managed policy exceeds the 10 KiB maintenance budget') { throw }
+            $stopped = $true
+          }
+          if (-not $stopped) { throw 'An oversized managed policy passed validation.' }
 
   linux:
     name: Linux clean-home round trip
@@ -164,6 +426,53 @@ jobs:
             exit 1
           fi
 
+          standard_home="$RUNNER_TEMP/task-aware-standard-defaults"
+          mkdir -p -- "$standard_home"
+          cat > "$standard_home/config.toml" <<'EOF'
+          model = "parent-model"
+          model_reasoning_effort = "medium"
+          approval_policy = "on-request"
+          sandbox_mode = "workspace-write"
+          EOF
+          scripts/install-task-aware-agent.sh --codex-home "$standard_home"
+          for expected in \
+            'model = "parent-model"' \
+            'model_reasoning_effort = "medium"' \
+            'approval_policy = "on-request"' \
+            'sandbox_mode = "workspace-write"'; do
+            key=${expected%% =*}
+            if [[ $(grep -Ec "^[[:space:]]*$key[[:space:]]*=" "$standard_home/config.toml") -ne 1 ]] ||
+              ! grep -Fqx "$expected" "$standard_home/config.toml"; then
+              printf 'Standard install changed %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+
+          astra_home="$RUNNER_TEMP/task-aware-astra-default"
+          scripts/install-task-aware-agent.sh --codex-home "$astra_home" --set-astra-default
+          scripts/install-task-aware-agent.sh --codex-home "$astra_home" --set-astra-default
+          scripts/test-task-aware-agent.sh --codex-home "$astra_home" --config-only-runtime
+          for expected in \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "xhigh"'; do
+            key=${expected%% =*}
+            if [[ $(grep -Ec "^[[:space:]]*$key[[:space:]]*=" "$astra_home/config.toml") -ne 1 ]] ||
+              ! grep -Fqx "$expected" "$astra_home/config.toml"; then
+              printf 'Astra default was not set exactly once: %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+
+          retired_sol_home="$RUNNER_TEMP/task-aware-retired-sol"
+          if scripts/install-task-aware-agent.sh --codex-home "$retired_sol_home" --set-sol-default; then
+            printf '%s\n' 'Retired Sol option was not rejected.' >&2
+            exit 1
+          fi
+          if [[ -e "$retired_sol_home" ]]; then
+            printf '%s\n' 'Retired Sol option mutated the target home.' >&2
+            exit 1
+          fi
+
           migration_home="$RUNNER_TEMP/task-aware-migration"
           mkdir -p -- "$migration_home"
           cat > "$migration_home/config.toml" <<'EOF'
@@ -198,6 +507,68 @@ jobs:
             --codex-home "$migration_home" \
             --config-only-runtime
 
+          family_migration_home="$RUNNER_TEMP/task-aware-family-migration"
+          family_agents_path="$family_migration_home/agents"
+          mkdir -p -- "$family_agents_path"
+          printf '%s\n' \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"' > "$family_migration_home/config.toml"
+          family_roles=(luna-task.toml luna-task-medium.toml luna-task-max.toml terra-worker.toml terra-worker-max.toml)
+          for role in "${family_roles[@]}"; do
+            printf '%s\n' \
+              'model = "gpt-6-astra"' \
+              'model_reasoning_effort = "high"' > "$family_agents_path/$role"
+          done
+          printf '%s\n' \
+            'name = "custom_unrelated"' \
+            'description = """Unrelated custom role."""' \
+            'developer_instructions = """Keep this role."""' \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "low"' > "$family_agents_path/custom-unrelated.toml"
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --config-only-runtime
+          for expected in \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"'; do
+            grep -Fqx -- "$expected" "$family_migration_home/config.toml" || {
+              printf 'Family migration did not preserve parent setting: %s\n' "$expected" >&2
+              exit 1
+            }
+          done
+          grep -Fqx -- 'name = "custom_unrelated"' "$family_agents_path/custom-unrelated.toml" || {
+            printf '%s\n' 'Family migration overwrote an unrelated custom role.' >&2
+            exit 1
+          }
+          backup_luna=$(find "$family_migration_home/task-aware-backups" -path '*/agents/luna-task.toml' -type f -print -quit)
+          [[ -n "$backup_luna" ]] && grep -Fqx 'model = "gpt-6-astra"' "$backup_luna" || {
+            printf '%s\n' 'Family migration did not back up the previous Astra-only D1 role.' >&2
+            exit 1
+          }
+          backup_config=$(find "$family_migration_home/task-aware-backups" -name config.toml -type f -print -quit)
+          [[ -n "$backup_config" ]] && grep -Fqx 'approval_policy = "never"' "$backup_config" || {
+            printf '%s\n' 'Family migration did not back up the prior parent configuration.' >&2
+            exit 1
+          }
+          sed -i -E 's/^model[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/model = "gpt-6-sol"/' "$family_agents_path/luna-task.toml"
+          if scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --skip-runtime; then
+            printf '%s\n' 'Validator accepted a wrong D1 model assignment.' >&2
+            exit 1
+          fi
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          for role in "${family_roles[@]}"; do
+            sed -i -E 's/^model[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/model = "gpt-6-astra"/' "$family_agents_path/$role"
+          done
+          if scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --skip-runtime; then
+            printf '%s\n' 'Validator accepted all-Astra D1/D2 role assignments.' >&2
+            exit 1
+          fi
+          scripts/install-task-aware-agent.sh --codex-home "$family_migration_home"
+          scripts/test-task-aware-agent.sh --codex-home "$family_migration_home" --config-only-runtime
+
           conflict_home="$RUNNER_TEMP/task-aware-conflict"
           mkdir -p -- "$conflict_home"
           printf '%s\n' 'default_permissions = ":workspace"' > "$conflict_home/config.toml"
@@ -215,3 +586,129 @@ jobs:
             printf '%s\n' 'Malformed AGENTS.md markers were not rejected.' >&2
             exit 1
           fi
+
+          literal_marker_home="$RUNNER_TEMP/task-aware-literal-markers"
+          mkdir -p -- "$literal_marker_home"
+          literal_marker_line='User text: <!-- BEGIN CODEX TASK-AWARE AGENT --> and <!-- END CODEX TASK-AWARE AGENT --> are examples.'
+          printf '%s\n' "$literal_marker_line" > "$literal_marker_home/AGENTS.md"
+          scripts/install-task-aware-agent.sh --codex-home "$literal_marker_home"
+          scripts/test-task-aware-agent.sh \
+            --codex-home "$literal_marker_home" \
+            --skip-runtime
+          if ! grep -Fqx -- "$literal_marker_line" "$literal_marker_home/AGENTS.md"; then
+            printf '%s\n' 'Inline marker examples were not preserved.' >&2
+            exit 1
+          fi
+
+          preserve_home="$RUNNER_TEMP/task-aware-preserve"
+          mkdir -p -- "$preserve_home"
+          printf '%s\n' \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"' \
+            'unmanaged_setting = "retain-me"' > "$preserve_home/config.toml"
+          scripts/install-task-aware-agent.sh --codex-home "$preserve_home"
+          for preserved_line in \
+            'model = "gpt-6-astra"' \
+            'model_reasoning_effort = "max"' \
+            'approval_policy = "never"' \
+            'sandbox_mode = "workspace-write"' \
+            'unmanaged_setting = "retain-me"'; do
+            if ! grep -Fqx -- "$preserved_line" "$preserve_home/config.toml"; then
+              printf 'Default installation did not preserve: %s\n' "$preserved_line" >&2
+              exit 1
+            fi
+          done
+
+          selection_conflict_home="$RUNNER_TEMP/task-aware-selection-conflict"
+          mkdir -p -- "$selection_conflict_home"
+          printf '%s\n' 'model = "preserve"' > "$selection_conflict_home/config.toml"
+          before_hash=$(sha256sum "$selection_conflict_home/config.toml" | awk '{print $1}')
+          if scripts/install-task-aware-agent.sh \
+            --codex-home "$selection_conflict_home" \
+            --set-sol-default \
+            --set-astra-default; then
+            printf '%s\n' 'Conflicting parent model switches were accepted.' >&2
+            exit 1
+          fi
+          after_hash=$(sha256sum "$selection_conflict_home/config.toml" | awk '{print $1}')
+          if [[ "$before_hash" != "$after_hash" ]]; then
+            printf '%s\n' 'Conflicting parent model switches mutated config.toml.' >&2
+            exit 1
+          fi
+          for path in task-aware-backups agents rules AGENTS.md; do
+            if [[ -e "$selection_conflict_home/$path" ]]; then
+              printf 'Conflicting parent model switches created %s.\n' "$path" >&2
+              exit 1
+            fi
+          done
+
+          for marker_case in duplicate reversed; do
+            marker_home="$RUNNER_TEMP/task-aware-markers-$marker_case"
+            mkdir -p -- "$marker_home"
+            if [[ "$marker_case" == duplicate ]]; then
+              printf '%s\n' \
+                '<!-- BEGIN CODEX TASK-AWARE AGENT -->' \
+                '<!-- END CODEX TASK-AWARE AGENT -->' \
+                '<!-- BEGIN CODEX TASK-AWARE AGENT -->' \
+                '<!-- END CODEX TASK-AWARE AGENT -->' > "$marker_home/AGENTS.md"
+            else
+              printf '%s\n' \
+                '<!-- END CODEX TASK-AWARE AGENT -->' \
+                '<!-- BEGIN CODEX TASK-AWARE AGENT -->' > "$marker_home/AGENTS.md"
+            fi
+            if scripts/install-task-aware-agent.sh --codex-home "$marker_home"; then
+              printf 'Marker case unexpectedly succeeded: %s\n' "$marker_case" >&2
+              exit 1
+            fi
+          done
+
+          crlf_home="$RUNNER_TEMP/task-aware-crlf"
+          mkdir -p -- "$crlf_home"
+          awk '{ printf "%s\r\n", $0 }' config/AGENTS.task-aware.md > "$crlf_home/AGENTS.md"
+          scripts/install-task-aware-agent.sh --codex-home "$crlf_home"
+          scripts/test-task-aware-agent.sh --codex-home "$crlf_home" --skip-runtime
+
+          for drift in policy role rule; do
+            drift_home="$RUNNER_TEMP/task-aware-drift-$drift"
+            scripts/install-task-aware-agent.sh --codex-home "$drift_home"
+            case "$drift" in
+              policy)
+                sed -i '/<!-- END CODEX TASK-AWARE AGENT -->/i# drift' "$drift_home/AGENTS.md"
+                ;;
+              role)
+                printf '%s\n' '# drift' >> "$drift_home/agents/luna-task.toml"
+                ;;
+              rule)
+                printf '%s\n' '# drift' >> "$drift_home/rules/task-aware-full-admin.rules"
+                ;;
+            esac
+            if scripts/test-task-aware-agent.sh --codex-home "$drift_home" --skip-runtime; then
+              printf 'Drift case unexpectedly passed: %s\n' "$drift" >&2
+              exit 1
+            fi
+          done
+
+      - name: Reject oversized managed policy
+        run: |
+          budget_repo="$RUNNER_TEMP/task-aware-budget-repo"
+          budget_home="$RUNNER_TEMP/task-aware-budget-home"
+          mkdir -p -- "$budget_repo"
+          cp -R -- scripts config agents rules "$budget_repo/"
+          budget_source="$budget_repo/config/AGENTS.task-aware.md"
+          awk '
+            /<!-- END CODEX TASK-AWARE AGENT -->/ {
+              printf "<!-- "
+              for (i = 0; i < 10240; i++) printf "x"
+              print " -->"
+            }
+            { print }
+          ' "$budget_source" > "$budget_source.tmp"
+          mv -- "$budget_source.tmp" "$budget_source"
+          "$budget_repo/scripts/install-task-aware-agent.sh" --codex-home "$budget_home"
+          if "$budget_repo/scripts/test-task-aware-agent.sh" --codex-home "$budget_home" --skip-runtime > "$RUNNER_TEMP/budget-error.txt" 2>&1; then
+            printf '%s\n' 'An oversized managed policy passed validation.' >&2
+            exit 1
+          fi
+          grep -Fq 'Managed policy exceeds the 10 KiB maintenance budget' "$RUNNER_TEMP/budget-error.txt"

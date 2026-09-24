@@ -4,22 +4,36 @@
 
 ## [Unreleased]
 
+### 追加
+
+- 親モデルとして Astra（`gpt-6-astra`）に対応。Windows の `-SetAstraDefault` と Linux の `--set-astra-default` で Astra xhigh を明示的に選択できる。
+- 現行運用の管理者操作用 `sol_admin_max` と承認規則を配布。操作・対象・権限範囲の明示許可を必須とし、通常役からの自動昇格を禁止する。
+- 子の作業指示に有限の `NO_PROGRESS_LIMIT`、`HARD_DEADLINE`、`SAFE_CANCELLATION` と最終返却の形式を定義。
+- 複数工程の必須確認、任意の証拠、終了条件を先に固定し、検証範囲を追加できる条件を定義。
+
 ### 変更
 
-- 現行の価格差を踏まえ、Luna Low の D1 を固定入力、明示的な出力契約、客観的完了条件を持つ限定的な読み取り専用調査・検証まで拡張。
-- Terra Medium の D2 を、状態変更を伴う実装、tool-heavy な複数工程、通常判断が必要な調査・検証として明確化。
-- D1 に Luna Max、D2 に Terra Max、D3 に Sol Max の上位 variant を追加。
-- 中間の xhigh role は設けず、標準とMaxの二段階に統一。
-- 能力クラスを先に決め、同じクラス内で標準またはMax枠を選ぶ二段階ルーティングへ変更。
-- 価格低下を、Maxによる完全性向上または手戻り回避を選びやすくする根拠として反映。
-- 最小十分な役割を選びつつ、D0 の細分化、明白な D2/D3 の意図的な過小ルーティング、不要な microtask fan-out を禁止。
-- 価格低下後も、統合負荷と競合を抑えるため同時に開く子スレッドの上限を3つに維持。
+- 配布ポリシーを v3.1 に更新し、判断順、権限、有限期限、必須確認と終了条件を統合。管理ブロックの 10 KiB 上限を維持。
+- 親の導入オプションは GPT-6 Astra xhigh。子は D1 を GPT-6 Luna Low/Medium/High、D2 を GPT-6 Sol Medium/High、D3 を GPT-6 Astra High/xhigh、D4 を GPT-6 Astra xhigh/Max に更新。管理者専用役は Astra Max を維持。
+- 既存六役の名前とファイル名を維持。`_max` は上位枠の識別名とし、D1・D2 は High、D3 は xhigh、D4 は Max に対応。
+- D1 の軽い突き合わせ向けに `luna_task_medium` を追加。標準 Low・Medium と上位 High の選択基準を明確化。
+- D4 の所見統合用に `astra_architect` / `astra_architect_max` を追加。2件以上の独立した D3 所見を入力とし、読み取り専用・再委譲禁止・最大3子を維持。
+- Astra xhigh を親へ設定する `--set-astra-default` / `-SetAstraDefault` を追加。通常導入は既存の親モデル、effort、権限を維持。
+- 旧 Sol 既定値オプションを廃止。指定時は Astra オプションへの案内を表示し、ファイル変更前に停止。
+- 能力クラスを先に決め、同じクラス内で標準または上位枠を選ぶ二段階ルーティングへ変更。D1 の限定的な読み取り専用調査と、D2 の通常判断を伴う実装・調査の境界を明確化。
+- 委譲の条件を満たす場合の実行、承認済み作業の継続、変更範囲に応じた検証をポリシーへ追加。
+- D0 の細分化、明白な D2/D3 の意図的な過小ルーティング、不要な小タスクへの分割を禁止。子は最大3つ、再委譲禁止を維持。
 
 ### 検証
 
-- Windows/Linux validator に、価格対応後の D1/D2 境界と過剰委譲防止規則の検査を追加。
-- Windows/Linux installer と validator を六 role の配置、model、effort、sandbox 検査へ拡張し、旧Luna/Terra High roleをbackup後に除去する移行を追加。
-- release 前の live probe を、六 role の model/effort 確認と D0 から D3 までの標準・Maxルーティング確認へ拡張。
+- マーカーの完全一致・順序・一意性、配布ポリシー・十役・規則のバイト一致を検査。CRLF、ブロック外の記述、不正なマーカー、期限や終了条件の欠落、差異、10 KiB 超過を回帰検証する。
+
+- CI の固定バージョンを、GPT-6 ファミリー設定を検証する Codex CLI 0.156.1 へ更新。
+- Windows/Linux validator を十役の model、effort、sandbox、承認ポリシーと GPT-6 ファミリーの割り当ての検査へ更新。
+- Windows/Linux installer に、旧 Luna/Terra High role を backup 後に除去する移行を追加。
+- CI に親の設定維持、Astra opt-in、廃止した Sol オプションの停止と再導入の検査を追加。
+- 全 Astra 構成からの再導入で D1/D2 のモデルを更新し、既存の親・権限・独自役割・バックアップを保持する移行と、誤ったモデル割り当ての拒否を検証。
+- リリース前の実動作確認を、九役の model/effort と D0 から D4 の役割選択へ拡張。静的検査とモデル起動の検証を区別。
 
 ## [0.1.0] - 2026-07-26
 

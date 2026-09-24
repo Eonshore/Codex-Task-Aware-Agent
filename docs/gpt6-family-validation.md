@@ -9,7 +9,7 @@
 - Linux CI の clean-home、既存設定保持、再導入、旧設定移行、marker/CRLF、drift、fault injection、10 KiB 上限の検査を実行。
 - 旧全 Astra 構成から D1/D2 のモデルが更新され、親の model/effort、権限、独自役割、旧設定のバックアップが保持されることを確認。
 - 誤った D1 モデルと、D1/D2 を全 Astra に戻した構成が validator に拒否されることを確認。
-- Bash 構文と `git diff --check` を確認。Windows の PowerShell 構文・round trip は GitHub Actions の Windows job で確認します。
+- Bash 構文と `git diff --check` を確認。Windows の PowerShell 構文・round trip と Linux の全検査も [GitHub Actions](https://github.com/Eonshore/Codex-Task-Aware-Agent/actions/runs/35978162954) で成功しました（実装コミット `0970932`）。
 
 ## 実起動
 
